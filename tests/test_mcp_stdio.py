@@ -32,7 +32,8 @@ def responses():
     proc = subprocess.run(
         [sys.executable, "-u", os.path.join(REPO, "mcp_stdio.py")],
         input="".join(json.dumps(m) + "\n" for m in MESSAGES),
-        capture_output=True, text=True, cwd=REPO, env=env, timeout=300,
+        capture_output=True, text=True, encoding="utf-8", cwd=REPO, env=env,
+        timeout=300,
     )
     assert proc.returncode == 0, proc.stderr[-2000:]
     return [json.loads(line) for line in proc.stdout.splitlines() if line.strip()]

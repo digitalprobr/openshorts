@@ -22,12 +22,18 @@ Two things this transport has to get right:
   are set up there; ASGITransport does not run it on its own.
 """
 import asyncio
+import io
 import json
 import os
 import sys
+import threading
 
 # Must happen before importing app: import-time prints would land on stdout.
-_PROTOCOL_OUT = sys.stdout
+# The protocol stream is re-wrapped as UTF-8: JSON-RPC payloads carry non-ASCII
+# (tool descriptions, ≥, emoji), and on Windows the inherited stdout encoding
+# is cp1252, which cannot encode them. On Unix this is a no-op re-wrap.
+_PROTOCOL_OUT = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8",
+                                 write_through=True)
 sys.stdout = sys.stderr
 
 from starlette.requests import Request  # noqa: E402
@@ -78,13 +84,30 @@ def _write(response: dict) -> None:
     _PROTOCOL_OUT.flush()
 
 
+def _pump_stdin(loop: asyncio.AbstractEventLoop, queue: "asyncio.Queue") -> None:
+    """Thread body: push raw stdin lines into the loop's queue until EOF."""
+    try:
+        for raw in sys.stdin.buffer:
+            loop.call_soon_threadsafe(queue.put_nowait, raw)
+    finally:
+        loop.call_soon_threadsafe(queue.put_nowait, b"")
+
+
 async def _stdin_lines():
-    """Yield stdin lines without blocking the loop (tool calls run for minutes)."""
+    """Yield stdin lines without blocking the loop (tool calls run for minutes).
+
+    The raw reads happen on a thread and reach the loop through
+    ``call_soon_threadsafe``: asyncio's ``connect_read_pipe`` cannot wrap the
+    real stdin on the Windows Proactor loop (CreateIoCompletionPort rejects
+    the handle with WinError 6 and ``readline`` hangs forever), while a
+    blocking thread serves Windows and Unix alike and still leaves the loop
+    free while a tool call runs.
+    """
     loop = asyncio.get_running_loop()
-    reader = asyncio.StreamReader()
-    await loop.connect_read_pipe(lambda: asyncio.StreamReaderProtocol(reader), sys.stdin)
+    queue: asyncio.Queue = asyncio.Queue()
+    threading.Thread(target=_pump_stdin, args=(loop, queue), daemon=True).start()
     while True:
-        line = await reader.readline()
+        line = await queue.get()
         if not line:  # EOF: the host closed the pipe
             return
         yield line

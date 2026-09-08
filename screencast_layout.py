@@ -125,18 +125,12 @@ def detect_faces_full_res(frame):
     import cv2
     import main as m
 
-    h, w, _ = frame.shape
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    with m.DETECT_LOCK:
-        results = m.face_detection.process(rgb)
-    if not results.detections:
-        return []
+    detections = m._run_face_detection(rgb)
 
     out = []
-    for detection in results.detections:
-        b = detection.location_data.relative_bounding_box
-        box = [int(b.xmin * w), int(b.ymin * h),
-               int(b.width * w), int(b.height * h)]
+    for d in detections:
+        box = [int(d['x']), int(d['y']), int(d['w']), int(d['h'])]
         out.append({'box': box, 'score': box[2] * box[3]})
     return out
 

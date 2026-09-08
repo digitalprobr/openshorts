@@ -87,9 +87,36 @@ OUTPUT — RETURN ONLY VALID JSON (no markdown, no comments). Order clips by pre
 model = YOLO(os.environ.get("YOLO_MODEL_PATH", "yolov8n.pt"))
 
 # --- MediaPipe Setup ---
-# Use standard Face Detection (BlazeFace) for speed
-mp_face_detection = mp.solutions.face_detection
-face_detection = mp_face_detection.FaceDetection(model_selection=1, min_detection_confidence=0.5)
+# Face detection via the MediaPipe Tasks API. The legacy mp.solutions API this
+# used to wrap was removed from the mediapipe wheels (>=0.10.30, the first
+# line supporting Python 3.13), and Tasks exists in every 0.10.x, so this one
+# setup serves the 3.11 Docker image and local 3.13 alike. Tasks ships only
+# the short-range BlazeFace (the legacy call used model_selection=1,
+# full-range): distant faces fall to the YOLO fallback a little more often,
+# which YOLO_FALLBACK_STRIDE already throttles.
+# FACE_DETECTOR_MODEL points deployments at a pre-downloaded .tflite so a
+# volume mounted over the workdir doesn't trigger a re-download at startup
+# (same pattern as YOLO_MODEL_PATH).
+from mediapipe.tasks.python import vision as mp_vision
+from mediapipe.tasks.python.core.base_options import BaseOptions
+
+_FACE_MODEL_URL = ("https://storage.googleapis.com/mediapipe-models/"
+                   "face_detector/blaze_face_short_range/float16/1/"
+                   "blaze_face_short_range.tflite")
+_face_model_path = os.environ.get("FACE_DETECTOR_MODEL",
+                                  "blaze_face_short_range.tflite")
+if not os.path.exists(_face_model_path):
+    import httpx
+    print(f"Downloading BlazeFace face-detection model to {_face_model_path} ...")
+    _resp = httpx.get(_FACE_MODEL_URL, follow_redirects=True, timeout=60)
+    _resp.raise_for_status()
+    with open(_face_model_path, "wb") as _f:
+        _f.write(_resp.content)
+
+face_detector = mp_vision.FaceDetector.create_from_options(
+    mp_vision.FaceDetectorOptions(
+        base_options=BaseOptions(model_asset_path=_face_model_path),
+        min_detection_confidence=0.5))
 
 # Consecutive detections a large target move must survive before the camera
 # follows it (see SmoothedCameraman.update_target). Env-overridable so the
@@ -426,35 +453,47 @@ def _detection_frame(frame):
     return small, scale
 
 
+def _run_face_detection(rgb_frame):
+    """Runs the shared Tasks FaceDetector on an RGB ndarray.
+
+    Returns one {'x','y','w','h','score'} entry per face, in the pixel
+    coordinates of the frame it was given (Tasks boxes are absolute; the old
+    Solutions API returned relative ones). The global detector is NOT
+    thread-safe and clips render in parallel, so inference goes through
+    DETECT_LOCK — the same discipline the YOLO fallback follows.
+    """
+    image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+    with DETECT_LOCK:
+        result = face_detector.detect(image)
+    out = []
+    for detection in result.detections:
+        bb = detection.bounding_box
+        score = detection.categories[0].score if detection.categories else 0.0
+        out.append({'x': bb.origin_x, 'y': bb.origin_y,
+                    'w': bb.width, 'h': bb.height, 'score': score})
+    return out
+
+
 def detect_face_candidates(frame):
     """
     Returns list of all detected faces using lightweight FaceDetection.
-    Boxes are in ORIGINAL frame coordinates (detection runs downscaled;
-    MediaPipe's relative coords make the mapping exact).
+    Boxes are in ORIGINAL frame coordinates (detection runs downscaled and
+    boxes are scaled back up through _detection_frame's scale).
     """
-    height, width, _ = frame.shape
-    small, _scale = _detection_frame(frame)
+    small, scale = _detection_frame(frame)
     rgb_frame = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
-    with DETECT_LOCK:
-        results = face_detection.process(rgb_frame)
-    
+    detections = _run_face_detection(rgb_frame)
+
     candidates = []
-    
-    if not results.detections:
-        return []
-        
-    for detection in results.detections:
-        bboxC = detection.location_data.relative_bounding_box
-        x = int(bboxC.xmin * width)
-        y = int(bboxC.ymin * height)
-        w = int(bboxC.width * width)
-        h = int(bboxC.height * height)
-        
+    for d in detections:
+        x = int(d['x'] * scale)
+        y = int(d['y'] * scale)
+        w = int(d['w'] * scale)
+        h = int(d['h'] * scale)
         candidates.append({
             'box': [x, y, w, h],
             'score': w * h # Area as score
         })
-            
     return candidates
 
 def detect_person_yolo(frame):

@@ -106,6 +106,10 @@ USER appuser
 # Pre-download YOLO model on build (now running as appuser)
 RUN python -c "from ultralytics import YOLO; YOLO('yolov8n.pt')"
 
+# Pre-download the BlazeFace Tasks model for the reframing face detector
+# (main.py re-downloads on first run if it is missing; curl is installed above).
+RUN curl -fsSL -o blaze_face_short_range.tflite https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite
+
 # Expose FastAPI port
 EXPOSE 8000
 

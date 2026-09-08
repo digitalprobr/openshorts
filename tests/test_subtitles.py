@@ -309,7 +309,7 @@ class TestFilterQuoting:
         # Both generators must name their own file, never derive it from a
         # video title. This is the property that actually prevents the bug.
         import re
-        src = open("main.py").read()
+        src = open("main.py", encoding="utf-8").read()
         m = re.search(r'ass_path = os\.path\.join\(\s*output_dir,\s*f"([^"]+)"', src)
         assert m, "auto-caption .ass path not found"
         assert "{stem}" not in m.group(1), (
@@ -319,7 +319,7 @@ class TestFilterQuoting:
         # Clips render in parallel; a bare timestamp collides and lets one clip
         # burn another's captions.
         import re
-        src = open("main.py").read()
+        src = open("main.py", encoding="utf-8").read()
         m = re.search(r'ass_path = os\.path\.join\(\s*output_dir,\s*f"([^"]+)"', src)
         assert "uuid" in m.group(1), f"not unique per clip: {m.group(1)}"
 

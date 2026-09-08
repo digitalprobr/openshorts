@@ -7,6 +7,9 @@
 # YOLO model
 *.pt
 
+# MediaPipe BlazeFace (Tasks) model
+*.tflite
+
 # Python virtual environment
 .venv/
 __pycache__/

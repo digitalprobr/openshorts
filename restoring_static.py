@@ -50,6 +50,11 @@ class RestoringStaticFiles(StaticFiles):
         self.guard = guard
 
     async def get_response(self, path: str, scope):
+        # StaticFiles hands this a native-separator path (os.path.join): on
+        # Windows that is "job\\file.mp4", and the "/" split that extracts the
+        # job id below is the one thing that must survive it. Normalize before
+        # anything reads the path — on Linux this is a no-op.
+        path = path.replace("\\", "/")
         # Before the filesystem: a refused path must look exactly like a
         # missing one, or the 404-vs-403 difference confirms the file is there.
         if self.guard is not None and not self.guard(path):

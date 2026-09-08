@@ -1704,7 +1704,28 @@ async def lifespan(app: FastAPI):
     yield
     # Cleanup (optional: cancel worker)
 
-app = FastAPI(lifespan=lifespan)
+# OpenAPI tag registry: groups endpoints in /docs and /openapi.json. Order here
+# is the order Swagger shows the groups. Every route decorator below names one
+# of these tags; the set of tags used by routes must match this list exactly
+# (tests/test_openapi_tags.py asserts it).
+OPENAPI_TAGS = [
+    {"name": "System", "description": "Health probes and instance configuration."},
+    {"name": "MCP", "description": "Agent-callable pipeline tools over the MCP Streamable HTTP protocol."},
+    {"name": "Uploads", "description": "Resumable direct file upload sessions."},
+    {"name": "Jobs", "description": "Pipeline jobs: start processing, poll status, fetch the source video, bulk download, restore."},
+    {"name": "Clips & Editing", "description": "Inspect and modify individual clips: EDL, transcript, scenes, re-render, reframe."},
+    {"name": "Rendering", "description": "On-demand video renders."},
+    {"name": "Subtitles", "description": "Burn-in and removal of burned subtitles."},
+    {"name": "Hooks", "description": "Hook text overlays."},
+    {"name": "Effects", "description": "AI effects generation."},
+    {"name": "Translation", "description": "Voice dubbing and subtitle translation."},
+    {"name": "Social Publishing", "description": "Publish clips to social platforms; connected accounts, analytics and scheduled posts."},
+    {"name": "Thumbnails", "description": "Thumbnail Studio: analyze, generate and publish video thumbnails."},
+    {"name": "AI Shorts", "description": "AI actor video generation: analyze, actors, voices, gallery."},
+    {"name": "Legacy Pages", "description": "Old HTML gallery pages, kept for backward compatibility."},
+]
+
+app = FastAPI(lifespan=lifespan, openapi_tags=OPENAPI_TAGS)
 
 # Cloud mode: attach middleware + routers at import time (before the app serves).
 if BILLING_ENABLED:
@@ -1713,7 +1734,7 @@ if BILLING_ENABLED:
 # MCP server (/mcp): the pipeline as agent-callable tools. Works in both modes —
 # cloud requires an osk_ API key, self-host keeps BYOK (see mcp_server.py).
 import mcp_server as _mcp_server
-app.include_router(_mcp_server.router)
+app.include_router(_mcp_server.router, tags=["MCP"])
 
 # Enable CORS for frontend. Cloud mode locks this down to the configured origins;
 # self-host keeps the permissive wildcard it has always used.
@@ -1978,13 +1999,13 @@ async def run_job(job_id, job_data):
         # inside a yt-dlp/httpx error) — scrub before it reaches client logs.
         jobs[job_id]['logs'].append(_scrub_secrets(f"Execution error: {str(e)}"))
 
-@app.get("/health")
+@app.get("/health", tags=["System"])
 async def health():
     """Lightweight liveness probe for uptime monitoring."""
     return {"status": "ok"}
 
 
-@app.get("/health/ready")
+@app.get("/health/ready", tags=["System"])
 async def health_ready():
     """Readiness probe for the Docker HEALTHCHECK (Dockerfile). Traefik's docker
     provider drops a container from the load balancer as soon as it turns
@@ -1997,7 +2018,7 @@ async def health_ready():
         return JSONResponse({"status": "stopping"}, status_code=503)
     return {"status": "ready"}
 
-@app.get("/api/config")
+@app.get("/api/config", tags=["System"])
 async def get_config():
     return {
         "youtubeUrlEnabled": not DISABLE_YOUTUBE_URL,
@@ -2090,7 +2111,7 @@ def _upload_url_base(request):
     return os.environ.get("PUBLIC_API_URL", "").rstrip("/") or str(request.base_url).rstrip("/")
 
 
-@app.post("/api/uploads")
+@app.post("/api/uploads", tags=["Uploads"])
 async def create_upload(request: Request):
     """Reserve an upload slot. Body (JSON, optional): {"filename": "..."}."""
     user_id = await _owner_id(request)
@@ -2123,7 +2144,7 @@ async def create_upload(request: Request):
     }
 
 
-@app.put("/api/uploads/{upload_id}")
+@app.put("/api/uploads/{upload_id}", tags=["Uploads"])
 async def put_upload(upload_id: str, request: Request):
     """Receive the raw video body for a reserved slot. Streams to disk, capped
     at MAX_FILE_SIZE_MB; a second PUT replaces the first."""
@@ -2154,7 +2175,7 @@ async def put_upload(upload_id: str, request: Request):
             "hint": "Now call /api/process with upload_id."}
 
 
-@app.delete("/api/uploads/{upload_id}")
+@app.delete("/api/uploads/{upload_id}", tags=["Uploads"])
 async def delete_upload(upload_id: str, request: Request):
     """Drop a slot and its file before it expires (owner only in cloud mode)."""
     slot = pending_uploads.get(upload_id)
@@ -2223,7 +2244,7 @@ def layout_env(requested):
     return env
 
 
-@app.post("/api/process")
+@app.post("/api/process", tags=["Jobs"])
 async def process_endpoint(
     request: Request,
     file: Optional[UploadFile] = File(None),
@@ -2608,7 +2629,7 @@ def _presented_status(job_id, job):
     return job['status']
 
 
-@app.get("/api/status/{job_id}")
+@app.get("/api/status/{job_id}", tags=["Jobs"])
 async def get_status(job_id: str, request: Request):
     job = jobs.get(job_id)
     if job is None:
@@ -2683,7 +2704,7 @@ def _signed_source_url(job_id: str) -> str:
     return f"/api/source/{job_id}?exp={exp}&sig={_source_signature(job_id, exp)}"
 
 
-@app.get("/api/source-url/{job_id}")
+@app.get("/api/source-url/{job_id}", tags=["Jobs"])
 async def get_source_url(job_id: str, request: Request):
     """Mint a short-lived signed URL for this job's source video.
 
@@ -2707,7 +2728,7 @@ async def get_source_url(job_id: str, request: Request):
     return {"url": _signed_source_url(job_id)}
 
 
-@app.get("/api/source/{job_id}")
+@app.get("/api/source/{job_id}", tags=["Jobs"])
 async def get_source_video(job_id: str, request: Request,
                            exp: int = 0, sig: str = ""):
     """Stream a job's original source video for the live-analysis preview and
@@ -2741,7 +2762,7 @@ async def get_source_video(job_id: str, request: Request,
     return FileResponse(source_path, media_type="video/mp4")
 
 
-@app.get("/api/jobs/{job_id}/download-all")
+@app.get("/api/jobs/{job_id}/download-all", tags=["Jobs"])
 async def download_all_clips(job_id: str, request: Request):
     """Bundle the current version of every clip of a job into one ZIP."""
     await _ensure_job_files(job_id, request)
@@ -2807,7 +2828,7 @@ _restore_locks: Dict[str, asyncio.Lock] = {}
 _JOB_ID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
 
 
-@app.post("/api/projects/{job_id}/restore")
+@app.post("/api/projects/{job_id}/restore", tags=["Jobs"])
 async def restore_project(job_id: str, request: Request):
     if not BILLING_ENABLED:
         raise HTTPException(status_code=404, detail="Not found")
@@ -2992,7 +3013,7 @@ class EditRequest(BaseModel):
     api_key: Optional[str] = None
     input_filename: Optional[str] = None
 
-@app.post("/api/edit")
+@app.post("/api/edit", tags=["Clips & Editing"])
 async def edit_clip(
     req: EditRequest,
     request: Request,
@@ -3194,7 +3215,7 @@ class SubtitleRequest(BaseModel):
     words: Optional[List[CaptionWordIn]] = None
 
 
-@app.get("/api/clip/{job_id}/{clip_index}/transcript")
+@app.get("/api/clip/{job_id}/{clip_index}/transcript", tags=["Clips & Editing"])
 async def get_clip_transcript(job_id: str, clip_index: int, request: Request):
     """Return word-level captions for a specific clip, formatted for Remotion."""
     await _ensure_job_files(job_id, request)
@@ -3287,7 +3308,7 @@ def _clip_recipe_parts(clip):
     return segments, canonical_range
 
 
-@app.get("/api/clip/{job_id}/{clip_index}/edl")
+@app.get("/api/clip/{job_id}/{clip_index}/edl", tags=["Clips & Editing"])
 async def get_clip_edl(job_id: str, clip_index: int, request: Request):
     """The clip's editable recipe: which source segments it was cut from, the
     word timeline around them, and whether the source is still available for
@@ -3394,7 +3415,7 @@ _rerender_locks: Dict[str, asyncio.Lock] = {}
 _scenes_locks: Dict[str, asyncio.Lock] = {}
 
 
-@app.post("/api/clip/rerender")
+@app.post("/api/clip/rerender", tags=["Clips & Editing"])
 async def rerender_clip(req: RerenderRequest, request: Request):
     """Re-render a clip from an edited EDL (the clip editor's save button).
 
@@ -3604,7 +3625,7 @@ def _clip_scene_workfile(source_path, segments, output_dir, token):
     return work_path
 
 
-@app.get("/api/clip/{job_id}/{clip_index}/scenes")
+@app.get("/api/clip/{job_id}/{clip_index}/scenes", tags=["Clips & Editing"])
 async def get_clip_scenes(job_id: str, clip_index: int, request: Request):
     """Scenes of a clip, each with a SOURCE frame to frame it against.
 
@@ -3763,7 +3784,7 @@ async def get_clip_scenes(job_id: str, clip_index: int, request: Request):
     }
 
 
-@app.post("/api/clip/reframe")
+@app.post("/api/clip/reframe", tags=["Clips & Editing"])
 async def reframe_clip(req: ReframeRequest, request: Request):
     """Re-render a clip with hand-framed scenes, leaving its cut untouched.
 
@@ -3920,7 +3941,7 @@ async def _reframe_locked(req: ReframeRequest, request: Request, job, overrides)
 # --- Remotion Render Proxy ---
 RENDER_SERVICE_URL = os.getenv("RENDER_SERVICE_URL", "http://renderer:3100")
 
-@app.post("/api/render")
+@app.post("/api/render", tags=["Rendering"])
 async def proxy_render(request: Request):
     """Proxy render requests to the Node.js Remotion render service."""
     await require_managed_entitlement(request)
@@ -3941,7 +3962,7 @@ async def proxy_render(request: Request):
             await _metering.release_reservation(reservation_id)
         raise HTTPException(status_code=502, detail=f"Render service unavailable: {e}")
 
-@app.get("/api/render/{render_id}")
+@app.get("/api/render/{render_id}", tags=["Rendering"])
 async def proxy_render_status(render_id: str):
     """Proxy render status polling to the Node.js Remotion render service."""
     import httpx
@@ -3958,7 +3979,7 @@ class EffectsGenerateRequest(BaseModel):
     clip_index: int
     input_filename: Optional[str] = None
 
-@app.post("/api/effects/generate")
+@app.post("/api/effects/generate", tags=["Effects"])
 async def generate_effects_config(
     req: EffectsGenerateRequest,
     request: Request,
@@ -4075,7 +4096,7 @@ async def generate_effects_config(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/subtitle")
+@app.post("/api/subtitle", tags=["Subtitles"])
 async def add_subtitles(req: SubtitleRequest, request: Request):
     await require_managed_entitlement(request)
     await _ensure_job_files(req.job_id, request)
@@ -4282,7 +4303,7 @@ class RemoveSubtitlesRequest(BaseModel):
     input_filename: Optional[str] = None
 
 
-@app.post("/api/subtitle/remove")
+@app.post("/api/subtitle/remove", tags=["Subtitles"])
 async def remove_subtitles(req: RemoveSubtitlesRequest, request: Request):
     """Point a clip back at its un-captioned original.
 
@@ -4351,7 +4372,7 @@ class HookRequest(BaseModel):
     style: Optional[str] = "classic"  # classic/dark/yellow/red/outline/outline_yellow
     remove: Optional[bool] = False  # strip the burned hook instead of adding one
 
-@app.post("/api/hook")
+@app.post("/api/hook", tags=["Hooks"])
 async def add_hook(req: HookRequest, request: Request):
     await require_managed_entitlement(request)
     await _ensure_job_files(req.job_id, request)
@@ -4491,12 +4512,12 @@ class TranslateRequest(BaseModel):
     source_language: Optional[str] = None
     input_filename: Optional[str] = None
 
-@app.get("/api/translate/languages")
+@app.get("/api/translate/languages", tags=["Translation"])
 async def get_languages():
     """Return supported languages for translation."""
     return {"languages": get_supported_languages()}
 
-@app.post("/api/translate")
+@app.post("/api/translate", tags=["Translation"])
 async def translate_clip(
     req: TranslateRequest,
     request: Request,
@@ -4606,7 +4627,7 @@ class SocialPostRequest(BaseModel):
 
 import httpx
 
-@app.post("/api/social/post")
+@app.post("/api/social/post", tags=["Social Publishing"])
 async def post_to_socials(req: SocialPostRequest, request: Request):
     await _ensure_job_files(req.job_id, request)
     if req.job_id not in jobs:
@@ -4702,7 +4723,7 @@ async def post_to_socials(req: SocialPostRequest, request: Request):
         print(f"❌ Social Post Exception: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/social/user")
+@app.get("/api/social/user", tags=["Social Publishing"])
 async def get_social_user(request: Request):
     """Proxy to fetch user profiles from Upload-Post.
 
@@ -4815,7 +4836,7 @@ async def _upload_post_get(api_key: str, url: str, params: dict):
     return resp.json()
 
 
-@app.get("/api/social/analytics")
+@app.get("/api/social/analytics", tags=["Social Publishing"])
 async def social_profile_analytics(
     request: Request,
     platforms: str = "tiktok,instagram,youtube",
@@ -4830,7 +4851,7 @@ async def social_profile_analytics(
     )
 
 
-@app.get("/api/social/analytics/posts")
+@app.get("/api/social/analytics/posts", tags=["Social Publishing"])
 async def social_post_analytics(
     request: Request,
     platform: Optional[str] = None,
@@ -4870,7 +4891,7 @@ def _post_row_views(row: dict) -> float:
     return 0.0
 
 
-@app.get("/api/social/analytics/impressions")
+@app.get("/api/social/analytics/impressions", tags=["Social Publishing"])
 async def social_total_impressions(
     request: Request,
     period: Optional[str] = None,     # last_day | last_week | last_month | last_3months | last_year
@@ -4945,7 +4966,7 @@ async def _scheduled_posts_for(api_key: str, profile: str) -> list:
             if isinstance(r, dict) and r.get("profile_username") == profile]
 
 
-@app.get("/api/social/scheduled")
+@app.get("/api/social/scheduled", tags=["Social Publishing"])
 async def social_scheduled(request: Request, user: Optional[str] = None):
     """Pending scheduled posts for the caller's profile, soonest first."""
     api_key, profile = await _social_analytics_auth(request, user)
@@ -4954,7 +4975,7 @@ async def social_scheduled(request: Request, user: Optional[str] = None):
     return {"profile_username": profile, "scheduled_posts": rows}
 
 
-@app.delete("/api/social/scheduled/{job_id}")
+@app.delete("/api/social/scheduled/{job_id}", tags=["Social Publishing"])
 async def social_cancel_scheduled(job_id: str, request: Request, user: Optional[str] = None):
     """Cancel one pending scheduled post, if it belongs to the caller."""
     api_key, profile = await _social_analytics_auth(request, user)
@@ -4975,7 +4996,7 @@ async def social_cancel_scheduled(job_id: str, request: Request, user: Optional[
 
 # --- Thumbnail Studio Endpoints ---
 
-@app.post("/api/thumbnail/upload")
+@app.post("/api/thumbnail/upload", tags=["Thumbnails"])
 async def thumbnail_upload(
     request: Request,
     file: Optional[UploadFile] = File(None),
@@ -5066,7 +5087,7 @@ async def thumbnail_upload(
     return {"session_id": session_id}
 
 
-@app.post("/api/thumbnail/analyze")
+@app.post("/api/thumbnail/analyze", tags=["Thumbnails"])
 async def thumbnail_analyze(
     request: Request,
     file: Optional[UploadFile] = File(None),
@@ -5171,7 +5192,7 @@ class ThumbnailTitlesRequest(BaseModel):
     message: Optional[str] = None
     title: Optional[str] = None
 
-@app.post("/api/thumbnail/titles")
+@app.post("/api/thumbnail/titles", tags=["Thumbnails"])
 async def thumbnail_titles(
     req: ThumbnailTitlesRequest,
     request: Request,
@@ -5237,7 +5258,7 @@ async def thumbnail_titles(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/thumbnail/generate")
+@app.post("/api/thumbnail/generate", tags=["Thumbnails"])
 async def thumbnail_generate(
     request: Request,
     session_id: str = Form(...),
@@ -5341,7 +5362,7 @@ async def thumbnail_generate(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/thumbnail/frames/{session_id}")
+@app.get("/api/thumbnail/frames/{session_id}", tags=["Thumbnails"])
 async def thumbnail_frames(session_id: str, request: Request):
     """Frames of the session's video with a large, sharp face, as candidates
     for the thumbnail's person reference. Computed once and cached."""
@@ -5378,7 +5399,7 @@ class ThumbnailDescribeRequest(BaseModel):
     session_id: str
     title: str
 
-@app.post("/api/thumbnail/describe")
+@app.post("/api/thumbnail/describe", tags=["Thumbnails"])
 async def thumbnail_describe(
     req: ThumbnailDescribeRequest,
     request: Request,
@@ -5415,7 +5436,7 @@ async def thumbnail_describe(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/thumbnail/publish")
+@app.post("/api/thumbnail/publish", tags=["Thumbnails"])
 async def thumbnail_publish(
     request: Request,
     background_tasks: BackgroundTasks,
@@ -5510,7 +5531,7 @@ async def thumbnail_publish(
     return {"publish_id": publish_id, "status": "uploading"}
 
 
-@app.get("/api/thumbnail/publish/status/{publish_id}")
+@app.get("/api/thumbnail/publish/status/{publish_id}", tags=["Thumbnails"])
 async def thumbnail_publish_status(publish_id: str):
     """Poll the status of a background publish job."""
     if publish_id not in publish_jobs:
@@ -5578,7 +5599,7 @@ class SaaSAnalyzeRequest(BaseModel):
     actor_gender: str = "female"
 
 
-@app.post("/api/saasshorts/analyze")
+@app.post("/api/saasshorts/analyze", tags=["AI Shorts"])
 async def saasshorts_analyze(
     req: SaaSAnalyzeRequest,
     request: Request,
@@ -5642,7 +5663,7 @@ class SaaSActorRequest(BaseModel):
     product_description: Optional[str] = None
 
 
-@app.post("/api/saasshorts/actor-upload")
+@app.post("/api/saasshorts/actor-upload", tags=["AI Shorts"])
 async def saasshorts_actor_upload(request: Request, file: UploadFile = File(...)):
     """Upload a custom actor image (stored locally only, not S3)."""
     # SaaSShorts is part of the paid product — require entitlement in cloud mode
@@ -5680,7 +5701,7 @@ async def saasshorts_actor_upload(request: Request, file: UploadFile = File(...)
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/saasshorts/actor-options")
+@app.post("/api/saasshorts/actor-options", tags=["AI Shorts"])
 async def saasshorts_actor_options(
     req: SaaSActorRequest,
     request: Request,
@@ -5727,7 +5748,7 @@ async def saasshorts_actor_options(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/saasshorts/gallery")
+@app.get("/api/saasshorts/gallery", tags=["AI Shorts"])
 async def saasshorts_video_gallery(limit: int = 50):
     """List all UGC videos from the public gallery."""
     try:
@@ -5749,7 +5770,7 @@ class SaaSPostRequest(BaseModel):
     timezone: Optional[str] = "UTC"
 
 
-@app.post("/api/saasshorts/post")
+@app.post("/api/saasshorts/post", tags=["AI Shorts"])
 async def saasshorts_post_to_socials(req: SaaSPostRequest, request: Request):
     """Post an AI Shorts video to social media via Upload-Post."""
     if req.job_id not in saas_jobs:
@@ -5829,7 +5850,7 @@ async def saasshorts_post_to_socials(req: SaaSPostRequest, request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/gallery", response_class=HTMLResponse)
+@app.get("/gallery", response_class=HTMLResponse, tags=["Legacy Pages"], deprecated=True)
 async def gallery_html_page():
     """SEO gallery page with all generated UGC videos."""
     import html as html_mod
@@ -5900,7 +5921,7 @@ h1{{font-size:28px;font-weight:700;padding:40px 20px 0;text-align:center}}
 </body></html>'''
 
 
-@app.get("/video/{video_id}", response_class=HTMLResponse)
+@app.get("/video/{video_id}", response_class=HTMLResponse, tags=["Legacy Pages"], deprecated=True)
 async def video_html_page(video_id: str):
     """SEO individual video page with og:video meta tags."""
     import html as html_mod
@@ -5982,7 +6003,7 @@ h1{{font-size:22px;font-weight:700;margin-bottom:8px}}
 </body></html>'''
 
 
-@app.get("/api/saasshorts/actor-gallery")
+@app.get("/api/saasshorts/actor-gallery", tags=["AI Shorts"])
 async def saasshorts_actor_gallery():
     """List all previously generated actor images from public S3."""
     try:
@@ -6005,7 +6026,7 @@ class SaaSGenerateRequest(BaseModel):
     share_to_gallery: bool = False
 
 
-@app.post("/api/saasshorts/generate")
+@app.post("/api/saasshorts/generate", tags=["AI Shorts"])
 async def saasshorts_generate(
     req: SaaSGenerateRequest,
     request: Request,
@@ -6170,7 +6191,7 @@ async def saasshorts_generate(
     return {"job_id": job_id, "status": "processing"}
 
 
-@app.get("/api/saasshorts/status/{job_id}")
+@app.get("/api/saasshorts/status/{job_id}", tags=["AI Shorts"])
 async def saasshorts_status(job_id: str, request: Request):
     """Poll SaaSShorts job status."""
     if job_id not in saas_jobs:
@@ -6185,7 +6206,7 @@ async def saasshorts_status(job_id: str, request: Request):
     }
 
 
-@app.get("/api/saasshorts/voices")
+@app.get("/api/saasshorts/voices", tags=["AI Shorts"])
 async def saasshorts_voices(
     x_elevenlabs_key: Optional[str] = Header(None, alias="X-ElevenLabs-Key"),
 ):
