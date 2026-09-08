@@ -42,6 +42,19 @@ DEFAULT_VOICES = {
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL_SAAS") or os.environ.get("GEMINI_MODEL") or "gemini-3.1-flash-lite"
 
 
+def _call_gemini(client, prompt, config):
+    """generate_content with the shared transient-error retry policy.
+
+    Same 503/429 classification and backoff as the main pipeline
+    (gemini_worker.call_with_retry) — a demand spike no longer kills a
+    SaaS video after 15s of doomed retries.
+    """
+    import gemini_worker  # lazy: keeps the module import free of the google stack
+    return gemini_worker.call_with_retry(
+        lambda: client.models.generate_content(model=GEMINI_MODEL, contents=[prompt], config=config),
+        who="Gemini (SaaSShorts)")
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # Phase 1: Website Scraping, Web Research & Analysis
 # ═══════════════════════════════════════════════════════════════════════
@@ -102,10 +115,9 @@ Return a comprehensive JSON research report:
 
 Be thorough. Use REAL data from your search results, not made-up information."""
 
-    response = client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=[prompt],
-        config=types.GenerateContentConfig(
+    response = _call_gemini(
+        client, prompt,
+        types.GenerateContentConfig(
             tools=[types.Tool(google_search=types.GoogleSearch())],
         ),
     )
@@ -354,10 +366,9 @@ Return a JSON object:
 IMPORTANT: Use REAL pain points from user reviews when available. Real frustrations make the best UGC content.
 Include 5-8 pain points, 4-6 emotional hooks, and 4+ viral angles."""
 
-    response = client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=[prompt],
-        config=types.GenerateContentConfig(response_mime_type="application/json"),
+    response = _call_gemini(
+        client, prompt,
+        types.GenerateContentConfig(response_mime_type="application/json"),
     )
 
     raw = response.text
@@ -536,10 +547,9 @@ RULES:
 - Example female: "a 26 year old attractive european woman, light brown wavy hair, wearing a white tank top, natural minimal makeup, friendly face"
 - Example male: "a 29 year old european man, short dark hair, light stubble, wearing a navy t-shirt, smart casual look" """
 
-    response = client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=[prompt],
-        config=types.GenerateContentConfig(
+    response = _call_gemini(
+        client, prompt,
+        types.GenerateContentConfig(
             response_mime_type="application/json",
             max_output_tokens=8192,
         ),

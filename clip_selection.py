@@ -13,6 +13,12 @@ MODEL_PRICES = {
     "gemini-2.5-flash-lite": (0.10, 0.40),
     "gemini-2.5-flash": (0.30, 2.50),
     "gemini-2.0-flash": (0.10, 0.40),  # deprecated (shut down 2026-06-01)
+    # Failure-time fallback providers via OpenRouter
+    # (docs/transcription_gemini_fix.md Part 2). Approximate list prices —
+    # verify against the provider before trusting billing to the cent.
+    "openai/gpt-4.1-mini": (0.40, 1.60),
+    "openai/gpt-4o-mini": (0.15, 0.60),
+    "anthropic/claude-3.5-haiku": (0.80, 4.00),
 }
 
 

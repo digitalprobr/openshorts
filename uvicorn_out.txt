@@ -3,3 +3,302 @@
 🧹 Cleanup task started.
 INFO:     127.0.0.1:60807 - "GET /health HTTP/1.1" 200 OK
 INFO:     127.0.0.1:60813 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56739 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56741 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62186 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62188 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61299 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63670 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50949 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50951 - "GET /api/config HTTP/1.1" 200 OK
+♻️  Re-enqueued 1 interrupted job(s) after restart.
+🔄 Acquired slot for job: edf10ef5-0d50-43cb-bde7-649bf416e137
+🎬 [run_job] Executing command for edf10ef5-0d50-43cb-bde7-649bf416e137: C:\Users\Usuario\AppData\Local\Programs\Python\Python313\python.exe -u main.py -u https://www.youtube.com/watch?v=mRScDNScPp8 --keep-original -o output\edf10ef5-0d50-43cb-bde7-649bf416e137 --format vertical
+📝 [Job Output] INFO: Created TensorFlow Lite XNNPACK delegate for CPU.
+📝 [Job Output] W0000 00:00:1788893116.668728   12004 inference_feedback_manager.cc:121] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+📝 [Job Output] 🔍 Debug: yt-dlp version: 2026.08.19
+📝 [Job Output] 📥 Downloading video from YouTube...
+📝 [Job Output] ⚠️ YOUTUBE_COOKIES env var not found.
+📝 [Job Output] 📥 Download attempt: fallback
+📝 [Job Output] [debug] Encodings: locale cp1252, fs utf-8, pref cp1252, out utf-8 (No ANSI), error cp1252 (No ANSI), screen utf-8 (No ANSI)
+📝 [Job Output] [debug] yt-dlp version stable@2026.08.19 from yt-dlp/yt-dlp [594bd50c2] (pip) API
+📝 [Job Output] [debug] params: {'quiet': False, 'verbose': True, 'no_warnings': False, 'cookiefile': None, 'proxy': None, 'socket_timeout': 30, 'retries': 10, 'fragment_retries': 10, 'nocheckcertificate': True, 'cachedir': False, 'extractor_args': {'youtube': {'player_client': ['default', 'mweb']}}, 'http_headers': {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', 'Accept-Language': 'en-us,en;q=0.5', 'Sec-Fetch-Mode': 'navigate'}, 'js_runtimes': {'deno': {}}, 'remote_components': set(), 'compat_opts': set()}
+📝 [Job Output] [debug] Python 3.13.13 (CPython AMD64 64bit) - Windows-11-10.0.26200-SP0 (OpenSSL 3.0.19 27 Jan 2026)
+📝 [Job Output] [debug] exe versions: none
+📝 [Job Output] [debug] Optional libraries: certifi-2026.04.22, requests-2.33.1, sqlite3-3.50.4, urllib3-2.6.3, websockets-14.2
+📝 [Job Output] [debug] JS runtimes: none
+📝 [Job Output] [debug] Proxy map: {}
+📝 [Job Output] [debug] Request Handlers: urllib, requests, websockets
+📝 [Job Output] [debug] Plugin directories: none
+📝 [Job Output] [debug] Loaded 1744 extractors
+📝 [Job Output] [debug] [youtube] [pot] PO Token Providers: none
+📝 [Job Output] [debug] [youtube] [pot] PO Token Cache Providers: memory
+📝 [Job Output] [debug] [youtube] [pot] PO Token Cache Spec Providers: webpo
+📝 [Job Output] [debug] [youtube] [jsc] JS Challenge Providers: bun (unavailable), deno (unavailable), node (unavailable), quickjs (unavailable)
+📝 [Job Output] [youtube] Extracting URL: https://www.youtube.com/watch?v=mRScDNScPp8
+📝 [Job Output] [youtube] mRScDNScPp8: Downloading webpage
+📝 [Job Output] [debug] [youtube] Forcing "main" player JS variant for player 8c3fda2d
+📝 [Job Output] original url = /s/player/8c3fda2d/player_es6.vflset/en_US/base.js
+📝 [Job Output] [youtube] mRScDNScPp8: Downloading visionos player API JSON
+📝 [Job Output] [youtube] mRScDNScPp8: Downloading mweb client config
+📝 [Job Output] [debug] [youtube] mRScDNScPp8: Detected experiment to bind GVS PO Token to video ID for mweb client
+📝 [Job Output] [youtube] mRScDNScPp8: Downloading mweb player API JSON
+📝 [Job Output] [debug] [youtube] mRScDNScPp8: Detected a 6s ad skippable after 5s for mweb
+📝 [Job Output] [youtube] mRScDNScPp8: Downloading m3u8 information
+📝 [Job Output] WARNING: [youtube] mRScDNScPp8: n challenge solving failed: Some formats may be missing. Ensure you have a supported JavaScript runtime and challenge solver script distribution installed. Review any warnings presented before this message. For more details, refer to  https://github.com/yt-dlp/yt-dlp/wiki/EJS
+📝 [Job Output] WARNING: [youtube] mRScDNScPp8: mweb client https formats require a GVS PO Token which was not provided. They will be skipped as they may yield HTTP Error 403. You can manually pass a GVS PO Token for this client with --extractor-args "youtube:po_token=mweb.gvs+XXX". For more information, refer to  https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
+📝 [Job Output] [debug] Sort order given by extractor: quality, res, fps, hdr:12, source, vcodec, channels, acodec, lang, proto
+📝 [Job Output] [debug] Formats sorted by: hasvid, ie_pref, quality, res, fps, hdr:12(7), source, vcodec, channels, acodec, lang, proto, size, br, asr, vext, aext, hasaud, id
+📝 [Job Output] [debug] Default format spec: best/bestvideo+bestaudio
+📝 [Job Output] [debug] Encodings: locale cp1252, fs utf-8, pref cp1252, out utf-8 (No ANSI), error cp1252 (No ANSI), screen utf-8 (No ANSI)
+📝 [Job Output] [debug] yt-dlp version stable@2026.08.19 from yt-dlp/yt-dlp [594bd50c2] (pip) API
+Error reading output for job edf10ef5-0d50-43cb-bde7-649bf416e137: 'utf-8' codec can't decode byte 0xc7 in position 816: invalid continuation byte
+✅ Released slot for job: edf10ef5-0d50-43cb-bde7-649bf416e137
+♻️  Re-enqueued 1 interrupted job(s) after restart.
+🔄 Acquired slot for job: add1d4fd-ab4f-406d-8133-f45e466124df
+🎬 [run_job] Executing command for add1d4fd-ab4f-406d-8133-f45e466124df: C:\Users\Usuario\AppData\Local\Programs\Python\Python313\python.exe -u main.py -i uploads\add1d4fd-ab4f-406d-8133-f45e466124df_YTDown.com_YouTube_Media_z9krxUWYTJg_001_1080p.mp4 -o output\add1d4fd-ab4f-406d-8133-f45e466124df --format vertical
+📝 [Job Output] INFO: Created TensorFlow Lite XNNPACK delegate for CPU.
+📝 [Job Output] W0000 00:00:1788893478.072539    7892 inference_feedback_manager.cc:121] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+📝 [Job Output] 🎙️  Transcribing video...
+📝 [Job Output] Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+📝 [Job Output] 🎙️ Transcribing… 25% (50s)
+📝 [Job Output] 🎙️ Transcribing… 50% (83s)
+📝 [Job Output] 🎙️ Transcribing… 75% (127s)
+📝 [Job Output] 🎙️ Transcribing… 100% (166s)
+📝 [Job Output] Detected language 'pt', 58 segments
+📝 [Job Output] [0.00s -> 3.68s]  Eu acho que é importante contextualizar o momento
+📝 [Job Output] [3.68s -> 6.22s]  em que o ministro André Mendonça dá essa decisão, né.
+📝 [Job Output] [6.32s -> 8.92s]  Pra além de ser o dia seguinte ao sete setembro.
+📝 [Job Output] [9.40s -> 12.92s]  Que que acontece que a gente já vem acompanhando a escalada dessa crise?
+📝 [Job Output] [14.02s -> 16.54s]  Quem é o André e Rodrigues?
+📝 [Job Output] [16.72s -> 19.50s]  Quem é o chefe da Polícia Federal hoje, né?
+📝 [Job Output] [19.82s -> 24.90s]  Pra além de ter sido o coordenador da segurança
+📝 [Job Output] [24.90s -> 26.90s]  do presidente Lula na campanha passada.
+📝 [Job Output] [26.90s -> 32.42s]  Ele também é o responsável pela Polícia Federal que prendeu Daniel Vorcaro.
+📝 [Job Output] [32.42s -> 38.04s]  E aí é que esse jogo fica complexo quando a gente olha pra essa situação toda.
+📝 [Job Output] [38.38s -> 45.20s]  Uma coisa que eu já venho acompanhando nos últimos dias, mas assim, pra quem tá me conhecendo nesses últimos tempos.
+📝 [Job Output] [45.28s -> 54.48s]  Eu acompanho os bastidores da Polícia Federal pelo menos desde o fim de 2018, onde eu comecei a cobrir mais a Polícia Federal em si.
+📝 [Job Output] [54.48s -> 59.16s]  Então eu me sinto muito à vontade pra falar sobre os últimos 10 anos da Polícia Federal.
+📝 [Job Output] [59.38s -> 63.38s]  E dizer o tanto que a Polícia Federal foi perseguida durante o governo Bolsonaro.
+📝 [Job Output] [64.06s -> 65.60s]  E o que é que começa a fazer?
+📝 [Job Output] [65.72s -> 71.48s]  O Andrei, na lista da vingança do Bolsonaro, ele também aparece, né?
+📝 [Job Output] [71.52s -> 73.32s]  Porque começa o Alexandre de Moraes.
+📝 [Job Output] [73.42s -> 77.26s]  E aí depois vai pro Paulo Gone, desce no Andrei Rodrigues.
+📝 [Job Output] [77.70s -> 83.22s]  E aí o Andrei é o chefe da Polícia Federal responsável por todas as investigações
+📝 [Job Output] [83.22s -> 86.54s]  que dizem em respeito à tentativa de golpe de Estado.
+📝 [Job Output] [86.66s -> 92.02s]  E também é o chefe da Polícia Federal responsável por prender Daniel Vorcaro.
+📝 [Job Output] [92.20s -> 96.36s]  E no que veio a tona, porque se é pra gente falar de Master,
+📝 [Job Output] [96.66s -> 100.04s]  que é o que a gente precisa falar, né, sobre o que tá sendo colocado
+📝 [Job Output] [100.04s -> 103.72s]  nesses últimos dias, até este momento aqui,
+📝 [Job Output] [103.96s -> 107.48s]  pra além do fato do André ter participado daquele evento em Londres,
+📝 [Job Output] [108.12s -> 112.06s]  o André não recebeu nenhum pagamento,
+📝 [Job Output] [112.06s -> 120.50s]  o Andrei, não há nenhuma prova concreta sobre o Andrei ter se beneficiado de algum jeito
+📝 [Job Output] [120.50s -> 124.24s]  do esquema do Daniel Vorkar ou alguma questão de propina.
+📝 [Job Output] [124.58s -> 128.56s]  Uma situação muito distinta é a situação do Procurador Geral da República, o Paulo
+📝 [Job Output] [128.56s -> 128.86s]  Gone.
+📝 [Job Output] [129.14s -> 134.76s]  As mensagens que vieram atando no relatório que dá conta da situação do Ministro
+📝 [Job Output] [134.76s -> 140.76s]  Alexandre de Borés que também é gravíssima, muito complicada, mas o Paulo Gone está
+📝 [Job Output] [140.76s -> 143.74s]  era muito implicado naquele relatório também.
+📝 [Job Output] [144.18s -> 147.50s]  Aí hoje, no dia 8 de setembro,
+📝 [Job Output] [147.86s -> 150.64s]  o afastamento é do chefe da Polícia Federal,
+📝 [Job Output] [150.64s -> 155.58s]  que é o responsável pela prisão do Daniel Vorcaro.
+📝 [Job Output] [156.28s -> 158.66s]  É este o meu espanto, né?
+📝 [Job Output] [159.10s -> 163.48s]  Mas eu vou dizer a vocês que nos últimos dias, nos últimos 10, 15 dias,
+📝 [Job Output] [163.76s -> 166.92s]  enquanto apurava o andamento dessa crise,
+📝 [Job Output] [166.92s -> 175.76s]  Eu ouvi de muita gente que existia essa vontade, que o ministro André Mendonça queria afastar
+📝 [Job Output] [175.76s -> 181.66s]  o André e para forçar a colaboração premiada do Daniel Vorcaro, que é essa colaboração
+📝 [Job Output] [181.66s -> 185.20s]  premiada que vocês viram aí, que é uma colaboração premiada e que não entrega
+📝 [Job Output] [185.20s -> 191.84s]  nada concreto, nem ninguém, concretamente em cima dele, quer dizer, os sócios ocultos
+📝 [Job Output] [191.84s -> 199.70s]  do Daniel Vorkar. Quem realmente criou o Master, criou o esquema, ganhou muito dinheiro, inclusive
+📝 [Job Output] [199.70s -> 205.08s]  do dinheiro público desviado desse esquema, principalmente aqui da situação no Rio Previdência,
+📝 [Job Output] [205.18s -> 211.52s]  no Rio de Janeiro. E um questionamento que eu escutei nos últimos meses, muitas vezes,
+📝 [Job Output] [212.02s -> 217.30s]  porque o governador do Rio de Janeiro ainda anda livre e leve e solto por aí, depois
+📝 [Job Output] [217.30s -> 222.82s]  Hoje, todas as provas que vieram a torne este caso também é do ministro André Mendonça.
+📝 [Job Output] [223.18s -> 231.82s]  E aí, nessa complexidade das coisas, o temor que eu ouvi de muitas fontes em Brasília,
+📝 [Job Output] [232.12s -> 236.74s]  pra além da própria Polícia Federal, era que se queria afastar o André e pra forçar
+📝 [Job Output] [236.74s -> 237.80s]  essa colaboração premiada.
+📝 [Job Output] [238.08s -> 241.66s]  Porque a Polícia Federal não quer fazer essa colaboração premiada do modo como
+📝 [Job Output] [241.66s -> 250.44s]  ela está chegando pelas equipes, várias de defesa, que assessoraram o Daniel Vorcário
+📝 [Job Output] [250.44s -> 252.76s]  desde que ele chegou. São várias as tentativas.
+📝 [Job Output] [253.26s -> 259.32s]  E um dos pontos, pra além de ele não entregar as pessoas em cima do esquema dele, é também
+📝 [Job Output] [259.32s -> 265.40s]  o fato de que ele tinha que devolver esse dinheiro que ele roubou, né, que deu esse golpe
+📝 [Job Output] [265.40s -> 271.08s]  todo no fundo garantidor de crédito e nos clientes do Master e criou todo esse problema
+📝 [Job Output] [271.08s -> 273.38s]  da maior fraude bancária da história do Brasil.
+📝 [Job Output] 🤖  Analyzing with Gemini (2-pass: score → detail)...
+📝 [Job Output] ❌ Error: GEMINI_API_KEY not found in environment variables (set it, or point LLM_BASE_URL at an OpenAI-compatible server).
+📝 [Job Output] Traceback (most recent call last):
+📝 [Job Output] File "C:\Users\Usuario\Documents\Apps\openshorts\main.py", line 2005, in <module>
+📝 [Job Output] raise RuntimeError(
+Error reading output for job add1d4fd-ab4f-406d-8133-f45e466124df: 'utf-8' codec can't decode byte 0x97 in position 31: invalid start byte
+✅ Released slot for job: add1d4fd-ab4f-406d-8133-f45e466124df
+♻️  Re-enqueued 1 interrupted job(s) after restart.
+🔄 Acquired slot for job: 27027ec8-0d7e-444e-a540-94b7ddbc00b8
+🎬 [run_job] Executing command for 27027ec8-0d7e-444e-a540-94b7ddbc00b8: C:\Users\Usuario\AppData\Local\Programs\Python\Python313\python.exe -u main.py -i uploads\27027ec8-0d7e-444e-a540-94b7ddbc00b8_YTDown.com_YouTube_Media_z9krxUWYTJg_001_1080p.mp4 -o output\27027ec8-0d7e-444e-a540-94b7ddbc00b8 --format vertical
+📝 [Job Output] INFO: Created TensorFlow Lite XNNPACK delegate for CPU.
+📝 [Job Output] W0000 00:00:1788894406.284320   12992 inference_feedback_manager.cc:121] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+📝 [Job Output] 🎙️  Transcribing video...
+📝 [Job Output] 🎙️ Transcribing… 25% (45s)
+📝 [Job Output] 🎙️ Transcribing… 50% (74s)
+📝 [Job Output] 🎙️ Transcribing… 75% (113s)
+📝 [Job Output] 🎙️ Transcribing… 100% (149s)
+📝 [Job Output] Detected language 'pt', 58 segments
+📝 [Job Output] [0.00s -> 3.68s]  Eu acho que é importante contextualizar o momento
+📝 [Job Output] [3.68s -> 6.22s]  em que o ministro André Mendonça dá essa decisão, né.
+📝 [Job Output] [6.32s -> 8.92s]  Pra além de ser o dia seguinte ao sete setembro.
+📝 [Job Output] [9.40s -> 12.92s]  Que que acontece que a gente já vem acompanhando a escalada dessa crise?
+📝 [Job Output] [14.02s -> 16.54s]  Quem é o André e Rodrigues?
+📝 [Job Output] [16.72s -> 19.50s]  Quem é o chefe da Polícia Federal hoje, né?
+📝 [Job Output] [19.82s -> 24.90s]  Pra além de ter sido o coordenador da segurança
+📝 [Job Output] [24.90s -> 26.90s]  do presidente Lula na campanha passada.
+📝 [Job Output] [26.90s -> 32.42s]  Ele também é o responsável pela Polícia Federal que prendeu Daniel Vorcaro.
+📝 [Job Output] [32.42s -> 38.04s]  E aí é que esse jogo fica complexo quando a gente olha pra essa situação toda.
+📝 [Job Output] [38.38s -> 45.20s]  Uma coisa que eu já venho acompanhando nos últimos dias, mas assim, pra quem tá me conhecendo nesses últimos tempos.
+📝 [Job Output] [45.28s -> 54.48s]  Eu acompanho os bastidores da Polícia Federal pelo menos desde o fim de 2018, onde eu comecei a cobrir mais a Polícia Federal em si.
+📝 [Job Output] [54.48s -> 59.16s]  Então eu me sinto muito à vontade pra falar sobre os últimos 10 anos da Polícia Federal.
+📝 [Job Output] [59.38s -> 63.38s]  E dizer o tanto que a Polícia Federal foi perseguida durante o governo Bolsonaro.
+📝 [Job Output] [64.06s -> 65.60s]  E o que é que começa a fazer?
+📝 [Job Output] [65.72s -> 71.48s]  O Andrei, na lista da vingança do Bolsonaro, ele também aparece, né?
+📝 [Job Output] [71.52s -> 73.32s]  Porque começa o Alexandre de Moraes.
+📝 [Job Output] [73.42s -> 77.26s]  E aí depois vai pro Paulo Gone, desce no Andrei Rodrigues.
+📝 [Job Output] [77.70s -> 83.22s]  E aí o Andrei é o chefe da Polícia Federal responsável por todas as investigações
+📝 [Job Output] [83.22s -> 86.54s]  que dizem em respeito à tentativa de golpe de Estado.
+📝 [Job Output] [86.66s -> 92.02s]  E também é o chefe da Polícia Federal responsável por prender Daniel Vorcaro.
+📝 [Job Output] [92.20s -> 96.36s]  E no que veio a tona, porque se é pra gente falar de Master,
+📝 [Job Output] [96.66s -> 100.04s]  que é o que a gente precisa falar, né, sobre o que tá sendo colocado
+📝 [Job Output] [100.04s -> 103.72s]  nesses últimos dias, até este momento aqui,
+📝 [Job Output] [103.96s -> 107.48s]  pra além do fato do André ter participado daquele evento em Londres,
+📝 [Job Output] [108.12s -> 112.06s]  o André não recebeu nenhum pagamento,
+📝 [Job Output] [112.06s -> 120.50s]  o Andrei, não há nenhuma prova concreta sobre o Andrei ter se beneficiado de algum jeito
+📝 [Job Output] [120.50s -> 124.24s]  do esquema do Daniel Vorkar ou alguma questão de propina.
+📝 [Job Output] [124.58s -> 128.56s]  Uma situação muito distinta é a situação do Procurador Geral da República, o Paulo
+📝 [Job Output] [128.56s -> 128.86s]  Gone.
+📝 [Job Output] [129.14s -> 134.76s]  As mensagens que vieram atando no relatório que dá conta da situação do Ministro
+📝 [Job Output] [134.76s -> 140.76s]  Alexandre de Borés que também é gravíssima, muito complicada, mas o Paulo Gone está
+📝 [Job Output] [140.76s -> 143.74s]  era muito implicado naquele relatório também.
+📝 [Job Output] [144.18s -> 147.50s]  Aí hoje, no dia 8 de setembro,
+📝 [Job Output] [147.86s -> 150.64s]  o afastamento é do chefe da Polícia Federal,
+📝 [Job Output] [150.64s -> 155.58s]  que é o responsável pela prisão do Daniel Vorcaro.
+📝 [Job Output] [156.28s -> 158.66s]  É este o meu espanto, né?
+📝 [Job Output] [159.10s -> 163.48s]  Mas eu vou dizer a vocês que nos últimos dias, nos últimos 10, 15 dias,
+📝 [Job Output] [163.76s -> 166.92s]  enquanto apurava o andamento dessa crise,
+📝 [Job Output] [166.92s -> 175.76s]  Eu ouvi de muita gente que existia essa vontade, que o ministro André Mendonça queria afastar
+📝 [Job Output] [175.76s -> 181.66s]  o André e para forçar a colaboração premiada do Daniel Vorcaro, que é essa colaboração
+📝 [Job Output] [181.66s -> 185.20s]  premiada que vocês viram aí, que é uma colaboração premiada e que não entrega
+📝 [Job Output] [185.20s -> 191.84s]  nada concreto, nem ninguém, concretamente em cima dele, quer dizer, os sócios ocultos
+📝 [Job Output] [191.84s -> 199.70s]  do Daniel Vorkar. Quem realmente criou o Master, criou o esquema, ganhou muito dinheiro, inclusive
+📝 [Job Output] [199.70s -> 205.08s]  do dinheiro público desviado desse esquema, principalmente aqui da situação no Rio Previdência,
+📝 [Job Output] [205.18s -> 211.52s]  no Rio de Janeiro. E um questionamento que eu escutei nos últimos meses, muitas vezes,
+📝 [Job Output] [212.02s -> 217.30s]  porque o governador do Rio de Janeiro ainda anda livre e leve e solto por aí, depois
+📝 [Job Output] [217.30s -> 222.82s]  Hoje, todas as provas que vieram a torne este caso também é do ministro André Mendonça.
+📝 [Job Output] [223.18s -> 231.82s]  E aí, nessa complexidade das coisas, o temor que eu ouvi de muitas fontes em Brasília,
+📝 [Job Output] [232.12s -> 236.74s]  pra além da própria Polícia Federal, era que se queria afastar o André e pra forçar
+📝 [Job Output] [236.74s -> 237.80s]  essa colaboração premiada.
+📝 [Job Output] [238.08s -> 241.66s]  Porque a Polícia Federal não quer fazer essa colaboração premiada do modo como
+📝 [Job Output] [241.66s -> 250.44s]  ela está chegando pelas equipes, várias de defesa, que assessoraram o Daniel Vorcário
+📝 [Job Output] [250.44s -> 252.76s]  desde que ele chegou. São várias as tentativas.
+📝 [Job Output] [253.26s -> 259.32s]  E um dos pontos, pra além de ele não entregar as pessoas em cima do esquema dele, é também
+📝 [Job Output] [259.32s -> 265.40s]  o fato de que ele tinha que devolver esse dinheiro que ele roubou, né, que deu esse golpe
+📝 [Job Output] [265.40s -> 271.08s]  todo no fundo garantidor de crédito e nos clientes do Master e criou todo esse problema
+📝 [Job Output] [271.08s -> 273.38s]  da maior fraude bancária da história do Brasil.
+📝 [Job Output] 🤖  Analyzing with Gemini (2-pass: score → detail)...
+📝 [Job Output] ❌ Error: GEMINI_API_KEY not found in environment variables (set it, or point LLM_BASE_URL at an OpenAI-compatible server).
+📝 [Job Output] Traceback (most recent call last):
+📝 [Job Output] File "C:\Users\Usuario\Documents\Apps\openshorts\main.py", line 2055, in <module>
+📝 [Job Output] raise RuntimeError(
+Error reading output for job 27027ec8-0d7e-444e-a540-94b7ddbc00b8: 'utf-8' codec can't decode byte 0x97 in position 31: invalid start byte
+✅ Released slot for job: 27027ec8-0d7e-444e-a540-94b7ddbc00b8
+INFO:     127.0.0.1:58943 - "GET /docs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58943 - "GET /openapi.json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58943 - "GET / HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60588 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50937 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57516 - "GET /api/config HTTP/1.1" 200 OK
+🔍 Fetching User ID from: https://api.upload-post.com/api/uploadposts/users
+INFO:     127.0.0.1:57520 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57522 - "GET /api/source-url/add1d4fd-ab4f-406d-8133-f45e466124df HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57540 - "GET /api/source-url/add1d4fd-ab4f-406d-8133-f45e466124df HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57542 - "GET /api/source/add1d4fd-ab4f-406d-8133-f45e466124df HTTP/1.1" 206 Partial Content
+🔍 Upload-Post User Response: {'success': True, 'profiles': [], 'limit': 2, 'plan': 'default'}
+INFO:     127.0.0.1:57518 - "GET /api/social/user HTTP/1.1" 200 OK
+🔍 Fetching User ID from: https://api.upload-post.com/api/uploadposts/users
+🔍 Upload-Post User Response: {'success': True, 'profiles': [], 'limit': 2, 'plan': 'default'}
+INFO:     127.0.0.1:52916 - "GET /api/social/user HTTP/1.1" 200 OK
+♻️  Re-enqueued 1 interrupted job(s) after restart.
+🔄 Acquired slot for job: 4140a7f9-5157-424a-804f-20537cd2217c
+🎬 [run_job] Executing command for 4140a7f9-5157-424a-804f-20537cd2217c: C:\Users\Usuario\AppData\Local\Programs\Python\Python313\python.exe -u main.py -i uploads\4140a7f9-5157-424a-804f-20537cd2217c_YTDown.com_YouTube_Media_z9krxUWYTJg_001_1080p.mp4 -o output\4140a7f9-5157-424a-804f-20537cd2217c --format vertical
+📝 [Job Output] INFO: Created TensorFlow Lite XNNPACK delegate for CPU.
+📝 [Job Output] W0000 00:00:1788895786.988244   16220 inference_feedback_manager.cc:121] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+📝 [Job Output] 🎙️  Transcribing video...
+📝 [Job Output] 🎙️ Transcribing… 25% (49s)
+📝 [Job Output] 🎙️ Transcribing… 50% (80s)
+📝 [Job Output] 🎙️ Transcribing… 75% (123s)
+📝 [Job Output] 🎙️ Transcribing… 100% (163s)
+📝 [Job Output] Detected language 'pt', 58 segments
+📝 [Job Output] [0.00s -> 3.68s]  Eu acho que é importante contextualizar o momento
+📝 [Job Output] [3.68s -> 6.22s]  em que o ministro André Mendonça dá essa decisão, né.
+📝 [Job Output] [6.32s -> 8.92s]  Pra além de ser o dia seguinte ao sete setembro.
+📝 [Job Output] [9.40s -> 12.92s]  Que que acontece que a gente já vem acompanhando a escalada dessa crise?
+📝 [Job Output] [14.02s -> 16.54s]  Quem é o André e Rodrigues?
+📝 [Job Output] [16.72s -> 19.50s]  Quem é o chefe da Polícia Federal hoje, né?
+📝 [Job Output] [19.82s -> 24.90s]  Pra além de ter sido o coordenador da segurança
+📝 [Job Output] [24.90s -> 26.90s]  do presidente Lula na campanha passada.
+📝 [Job Output] [26.90s -> 32.42s]  Ele também é o responsável pela Polícia Federal que prendeu Daniel Vorcaro.
+📝 [Job Output] [32.42s -> 38.04s]  E aí é que esse jogo fica complexo quando a gente olha pra essa situação toda.
+📝 [Job Output] [38.38s -> 45.20s]  Uma coisa que eu já venho acompanhando nos últimos dias, mas assim, pra quem tá me conhecendo nesses últimos tempos.
+📝 [Job Output] [45.28s -> 54.48s]  Eu acompanho os bastidores da Polícia Federal pelo menos desde o fim de 2018, onde eu comecei a cobrir mais a Polícia Federal em si.
+📝 [Job Output] [54.48s -> 59.16s]  Então eu me sinto muito à vontade pra falar sobre os últimos 10 anos da Polícia Federal.
+📝 [Job Output] [59.38s -> 63.38s]  E dizer o tanto que a Polícia Federal foi perseguida durante o governo Bolsonaro.
+📝 [Job Output] [64.06s -> 65.60s]  E o que é que começa a fazer?
+📝 [Job Output] [65.72s -> 71.48s]  O Andrei, na lista da vingança do Bolsonaro, ele também aparece, né?
+📝 [Job Output] [71.52s -> 73.32s]  Porque começa o Alexandre de Moraes.
+📝 [Job Output] [73.42s -> 77.26s]  E aí depois vai pro Paulo Gone, desce no Andrei Rodrigues.
+📝 [Job Output] [77.70s -> 83.22s]  E aí o Andrei é o chefe da Polícia Federal responsável por todas as investigações
+📝 [Job Output] [83.22s -> 86.54s]  que dizem em respeito à tentativa de golpe de Estado.
+📝 [Job Output] [86.66s -> 92.02s]  E também é o chefe da Polícia Federal responsável por prender Daniel Vorcaro.
+📝 [Job Output] [92.20s -> 96.36s]  E no que veio a tona, porque se é pra gente falar de Master,
+📝 [Job Output] [96.66s -> 100.04s]  que é o que a gente precisa falar, né, sobre o que tá sendo colocado
+📝 [Job Output] [100.04s -> 103.72s]  nesses últimos dias, até este momento aqui,
+📝 [Job Output] [103.96s -> 107.48s]  pra além do fato do André ter participado daquele evento em Londres,
+📝 [Job Output] [108.12s -> 112.06s]  o André não recebeu nenhum pagamento,
+📝 [Job Output] [112.06s -> 120.50s]  o Andrei, não há nenhuma prova concreta sobre o Andrei ter se beneficiado de algum jeito
+📝 [Job Output] [120.50s -> 124.24s]  do esquema do Daniel Vorkar ou alguma questão de propina.
+📝 [Job Output] [124.58s -> 128.56s]  Uma situação muito distinta é a situação do Procurador Geral da República, o Paulo
+📝 [Job Output] [128.56s -> 128.86s]  Gone.
+📝 [Job Output] [129.14s -> 134.76s]  As mensagens que vieram atando no relatório que dá conta da situação do Ministro
+📝 [Job Output] [134.76s -> 140.76s]  Alexandre de Borés que também é gravíssima, muito complicada, mas o Paulo Gone está
+📝 [Job Output] [140.76s -> 143.74s]  era muito implicado naquele relatório também.
+📝 [Job Output] [144.18s -> 147.50s]  Aí hoje, no dia 8 de setembro,
+📝 [Job Output] [147.86s -> 150.64s]  o afastamento é do chefe da Polícia Federal,
+📝 [Job Output] [150.64s -> 155.58s]  que é o responsável pela prisão do Daniel Vorcaro.
+📝 [Job Output] [156.28s -> 158.66s]  É este o meu espanto, né?
+📝 [Job Output] [159.10s -> 163.48s]  Mas eu vou dizer a vocês que nos últimos dias, nos últimos 10, 15 dias,
+📝 [Job Output] [163.76s -> 166.92s]  enquanto apurava o andamento dessa crise,
+📝 [Job Output] [166.92s -> 175.76s]  Eu ouvi de muita gente que existia essa vontade, que o ministro André Mendonça queria afastar
+📝 [Job Output] [175.76s -> 181.66s]  o André e para forçar a colaboração premiada do Daniel Vorcaro, que é essa colaboração
+📝 [Job Output] [181.66s -> 185.20s]  premiada que vocês viram aí, que é uma colaboração premiada e que não entrega
+📝 [Job Output] [185.20s -> 191.84s]  nada concreto, nem ninguém, concretamente em cima dele, quer dizer, os sócios ocultos
+📝 [Job Output] [191.84s -> 199.70s]  do Daniel Vorkar. Quem realmente criou o Master, criou o esquema, ganhou muito dinheiro, inclusive
+📝 [Job Output] [199.70s -> 205.08s]  do dinheiro público desviado desse esquema, principalmente aqui da situação no Rio Previdência,
+📝 [Job Output] [205.18s -> 211.52s]  no Rio de Janeiro. E um questionamento que eu escutei nos últimos meses, muitas vezes,
+📝 [Job Output] [212.02s -> 217.30s]  porque o governador do Rio de Janeiro ainda anda livre e leve e solto por aí, depois
+📝 [Job Output] [217.30s -> 222.82s]  Hoje, todas as provas que vieram a torne este caso também é do ministro André Mendonça.
+📝 [Job Output] [223.18s -> 231.82s]  E aí, nessa complexidade das coisas, o temor que eu ouvi de muitas fontes em Brasília,
+📝 [Job Output] [232.12s -> 236.74s]  pra além da própria Polícia Federal, era que se queria afastar o André e pra forçar
+📝 [Job Output] [236.74s -> 237.80s]  essa colaboração premiada.
+📝 [Job Output] [238.08s -> 241.66s]  Porque a Polícia Federal não quer fazer essa colaboração premiada do modo como
+📝 [Job Output] [241.66s -> 250.44s]  ela está chegando pelas equipes, várias de defesa, que assessoraram o Daniel Vorcário
+📝 [Job Output] [250.44s -> 252.76s]  desde que ele chegou. São várias as tentativas.
+📝 [Job Output] [253.26s -> 259.32s]  E um dos pontos, pra além de ele não entregar as pessoas em cima do esquema dele, é também
+📝 [Job Output] [259.32s -> 265.40s]  o fato de que ele tinha que devolver esse dinheiro que ele roubou, né, que deu esse golpe
+📝 [Job Output] [265.40s -> 271.08s]  todo no fundo garantidor de crédito e nos clientes do Master e criou todo esse problema
+📝 [Job Output] [271.08s -> 273.38s]  da maior fraude bancária da história do Brasil.
+📝 [Job Output] 🤖  Analyzing with Gemini (2-pass: score → detail)...
+📝 [Job Output] ❌ Error: GEMINI_API_KEY not found in environment variables (set it, or point LLM_BASE_URL at an OpenAI-compatible server).
+📝 [Job Output] Traceback (most recent call last):
+📝 [Job Output] File "C:\Users\Usuario\Documents\Apps\openshorts\main.py", line 2055, in <module>
+📝 [Job Output] raise RuntimeError(
+Error reading output for job 4140a7f9-5157-424a-804f-20537cd2217c: 'utf-8' codec can't decode byte 0x97 in position 31: invalid start byte
+✅ Released slot for job: 4140a7f9-5157-424a-804f-20537cd2217c
+♻️  Re-enqueued 1 interrupted job(s) after restart.
+🔄 Acquired slot for job: 45866c9a-40c8-46de-a3fe-cbd07b529136
+🎬 [run_job] Executing command for 45866c9a-40c8-46de-a3fe-cbd07b529136: C:\Users\Usuario\AppData\Local\Programs\Python\Python313\python.exe -u main.py -i uploads\45866c9a-40c8-46de-a3fe-cbd07b529136_YTDown.com_YouTube_Media_z9krxUWYTJg_001_1080p.mp4 -o output\45866c9a-40c8-46de-a3fe-cbd07b529136 --format vertical

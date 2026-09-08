@@ -64,16 +64,19 @@ _NULL_GATE = _NullGate()
 
 
 class _TranscribeProgress:
-    """Emits '🎙️ Transcribing… NN% (Xs)' lines at 25% steps.
+    """Emits '🎙️ Transcribing… NN% (Xs)' lines at 1% steps.
 
     These are the only transcription lines cloud users see (log_view keeps
-    them), so they must stay free of technical detail.
+    them), so they must stay free of technical detail. 1% steps (instead of
+    the coarser 25% used before) make it obvious from the log whether the
+    decode is moving or stuck — gaps between consecutive timestamps are
+    small enough to judge progress in near-real-time.
     """
 
     def __init__(self, total_seconds):
         self.total = max(float(total_seconds or 0), 0.0)
         self.started = time.time()
-        self.next_pct = 25
+        self.next_pct = 1
 
     def update(self, position_seconds):
         if self.total <= 0:
@@ -82,12 +85,13 @@ class _TranscribeProgress:
         while pct >= self.next_pct and self.next_pct <= 100:
             elapsed = int(time.time() - self.started)
             print(f"🎙️ Transcribing… {self.next_pct}% ({elapsed}s)", flush=True)
-            self.next_pct += 25
+            self.next_pct += 1
 
 # --- whisper singleton ------------------------------------------------------
 
 _whisper_model = None
 _whisper_key = None
+_whisper_pipeline = None  # BatchedInferencePipeline wrapper (lazy)
 _whisper_lock = threading.Lock()
 # Set after a CUDA failure (e.g. VRAM exhausted by other models on the GPU)
 # so every later transcription goes straight to CPU instead of re-failing.
@@ -100,7 +104,7 @@ def _get_whisper_model():
     Keeping the model resident avoids a full reload per transcription (which
     on GPU would also mean re-allocating a couple of GB of VRAM per job).
     """
-    global _whisper_model, _whisper_key
+    global _whisper_model, _whisper_key, _whisper_pipeline
     cfg = get_whisper_config()
     if _whisper_force_cpu:
         cfg["device"] = "cpu"
@@ -111,11 +115,60 @@ def _get_whisper_model():
             from faster_whisper import WhisperModel
             _whisper_model = WhisperModel(key[0], device=key[1], compute_type=key[2])
             _whisper_key = key
+            _whisper_pipeline = None  # any cached batched wrapper points at the old model
     return _whisper_model, cfg["device"]
+
+
+def _whisper_batch_size():
+    """Batched-decode width: ``WHISPER_BATCH_SIZE`` (default 8, 1 disables)."""
+    raw = os.environ.get("WHISPER_BATCH_SIZE", "8").strip()
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return 8
+
+
+def _get_batched_pipeline(model):
+    """BatchedInferencePipeline around the singleton model (None if unavailable).
+
+    Batched decode is the single biggest code-side speedup (~3-4x on GPU):
+    VAD speech chunks are transcribed in parallel instead of segment by
+    segment, with the same word-timestamped output contract.
+    """
+    global _whisper_pipeline
+    if _whisper_pipeline is None:
+        try:
+            from faster_whisper import BatchedInferencePipeline
+        except (ImportError, AttributeError):
+            return None  # install without the batched pipeline / test fake
+        _whisper_pipeline = BatchedInferencePipeline(model=model)
+    return _whisper_pipeline
+
+
+def _media_duration_seconds(media_path) -> float:
+    """Media duration in seconds via ffprobe (0.0 when it can't be determined)."""
+    try:
+        out = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "csv=p=0", str(media_path)],
+            capture_output=True, text=True, timeout=60,
+        )
+        return float(out.stdout.strip())
+    except Exception:
+        return 0.0
 
 
 def _run_whisper_once(media_path, **params):
     model, device = _get_whisper_model()
+    batch = _whisper_batch_size()
+    # Batched decode is only trusted on longer audio: very short files hit
+    # batch edge cases (sub-second chunks, empty VAD output). Unknown
+    # duration (0.0) also takes the sequential path.
+    if batch > 1 and device != "cpu" and _media_duration_seconds(media_path) >= 60:
+        pipeline = _get_batched_pipeline(model)
+        if pipeline is not None:
+            params = {**params, "batch_size": batch}
+            model = pipeline
     gate = _ASR_GATE if device != "cpu" else _NULL_GATE
     with gate:
         segments, info = model.transcribe(media_path, **params)
@@ -141,7 +194,7 @@ def run_whisper_transcription(media_path, **params):
     pins CPU for the rest of the process — the GPU is shared with other
     models, so a job must degrade instead of dying when VRAM runs out.
     """
-    global _whisper_model, _whisper_force_cpu
+    global _whisper_model, _whisper_force_cpu, _whisper_pipeline
     try:
         return _run_whisper_once(media_path, **params)
     except RuntimeError as e:
@@ -151,10 +204,17 @@ def run_whisper_transcription(media_path, **params):
         _whisper_force_cpu = True
         with _whisper_lock:
             _whisper_model = None  # drop the GPU model to release its VRAM
+            _whisper_pipeline = None
         return _run_whisper_once(media_path, **params)
 
 
 def _transcribe_with_whisper(media_path):
+    # When the shared 16 kHz wav was already extracted (parakeet attempt or a
+    # retry in this process), reuse it: decoding PCM is cheaper than
+    # demuxing + decoding the original container inside the GPU gate.
+    shared = _current_shared_wav_for(media_path)
+    if shared:
+        media_path = shared
     segments, info = run_whisper_transcription(media_path, **WHISPER_TRANSCRIBE_PARAMS)
 
     out_segments = []
@@ -212,6 +272,60 @@ def _extract_wav(media_path):
     return wav_path
 
 
+# --- shared 16 kHz wav extraction (extract once, reuse across backends) ------
+
+_shared_wav_media = None   # (abs path, mtime) the cached wav was extracted from
+_shared_wav_path = None
+
+
+def _get_shared_wav(media_path):
+    """16 kHz mono PCM wav for ``media_path``, extracted once and cached.
+
+    Parakeet needs this format anyway, and handing the same wav to whisper
+    (instead of the original container) skips a second decode of the media
+    inside the serialized GPU gate. Single-entry cache keyed on path+mtime:
+    a whisper fallback after a parakeet failure, and job retries in the same
+    process, reuse the extraction instead of re-running ffmpeg.
+    """
+    global _shared_wav_media, _shared_wav_path
+    try:
+        key = (os.path.abspath(media_path), os.path.getmtime(media_path))
+    except OSError:
+        key = None
+    if (key is not None and _shared_wav_media == key
+            and _shared_wav_path and os.path.exists(_shared_wav_path)):
+        return _shared_wav_path
+    _release_shared_wav()
+    wav_path = _extract_wav(media_path)
+    _shared_wav_media, _shared_wav_path = key, wav_path
+    return wav_path
+
+
+def _release_shared_wav():
+    """Delete the cached wav (called when the transcription job is done)."""
+    global _shared_wav_media, _shared_wav_path
+    if _shared_wav_path:
+        try:
+            os.remove(_shared_wav_path)
+        except OSError:
+            pass
+    _shared_wav_media = None
+    _shared_wav_path = None
+
+
+def _current_shared_wav_for(media_path):
+    """The cached wav for this media, or None (so whisper can reuse it)."""
+    if not (_shared_wav_media and _shared_wav_path
+            and os.path.exists(_shared_wav_path)):
+        return None
+    try:
+        if _shared_wav_media[0] != os.path.abspath(media_path):
+            return None
+    except OSError:
+        return None
+    return _shared_wav_path
+
+
 def _words_from_tokens(tokens, timestamps, seg_start, seg_end):
     """Group parakeet BPE tokens into words with absolute timestamps.
 
@@ -249,25 +363,21 @@ def _words_from_tokens(tokens, timestamps, seg_start, seg_end):
 
 def _transcribe_with_parakeet(media_path):
     model = _get_parakeet_model()
-    wav_path = _extract_wav(media_path)
+    wav_path = _get_shared_wav(media_path)
+    # 16kHz mono s16le wav -> 32000 bytes per second of audio.
     try:
-        # 16kHz mono s16le wav -> 32000 bytes per second of audio.
-        try:
-            duration = os.path.getsize(wav_path) / 32000.0
-        except OSError:
-            duration = 0.0
-        with _ASR_GATE:
-            progress = _TranscribeProgress(duration)
-            results = []
-            for seg in model.recognize(wav_path):
-                results.append(seg)
-                progress.update(float(seg.end))
-            progress.update(progress.total)
-    finally:
-        try:
-            os.remove(wav_path)
-        except OSError:
-            pass
+        duration = os.path.getsize(wav_path) / 32000.0
+    except OSError:
+        duration = 0.0
+    with _ASR_GATE:
+        progress = _TranscribeProgress(duration)
+        results = []
+        for seg in model.recognize(wav_path):
+            results.append(seg)
+            progress.update(float(seg.end))
+        progress.update(progress.total)
+    # The cached wav is NOT removed here: a whisper fallback (or a job retry
+    # in this process) reuses it. transcribe_media releases it when done.
 
     out_segments = []
     text_parts = []
@@ -350,6 +460,21 @@ def _has_audio_stream(media_path) -> bool:
         return True  # probe failed — don't block, let the backend try
 
 
+def _log_asr_rtf(transcript, started):
+    """One RTF line per transcription: audio seconds vs wall seconds.
+
+    The health metric for the ASR stack (docs/transcription_gemini_fix.md
+    Part 1): RTF <= 0.1 is the prod target. Real-time factor regressions
+    from model/config changes show up here immediately.
+    """
+    segments = transcript.get("segments") or []
+    audio = float(segments[-1]["end"]) if segments else 0.0
+    elapsed = time.time() - started
+    if audio > 0:
+        print(f"🎙️ [ASR] done: {audio:.0f}s of audio in {elapsed:.1f}s "
+              f"(RTF {elapsed / audio:.2f})", flush=True)
+
+
 def transcribe_media(media_path):
     """Transcribe with the configured backend, falling back to whisper."""
     # Silent videos (AI-generated clips, muted screen recordings) have no audio
@@ -361,20 +486,29 @@ def transcribe_media(media_path):
             "This video has no audio track. OpenShorts finds viral moments from "
             "speech, so it needs a video with audio.")
 
-    backend = os.environ.get("TRANSCRIBE_BACKEND", "whisper").strip().lower()
+    started = time.time()
+    try:
+        backend = os.environ.get("TRANSCRIBE_BACKEND", "whisper").strip().lower()
 
-    if backend == "parakeet":
-        try:
-            transcript = _transcribe_with_parakeet(media_path)
-            reason = _parakeet_fallback_reason(transcript)
-            if reason is None:
-                print(f"🎙️ [ASR] parakeet ok: lang={transcript['language']} "
-                      f"segments={len(transcript['segments'])}")
-                return transcript
-            print(f"⚠️ [ASR] parakeet result rejected ({reason}) — "
-                  f"falling back to whisper")
-        except Exception as e:
-            print(f"⚠️ [ASR] parakeet failed ({type(e).__name__}: {e}) — "
-                  f"falling back to whisper")
+        if backend == "parakeet":
+            try:
+                transcript = _transcribe_with_parakeet(media_path)
+                reason = _parakeet_fallback_reason(transcript)
+                if reason is None:
+                    print(f"🎙️ [ASR] parakeet ok: lang={transcript['language']} "
+                          f"segments={len(transcript['segments'])}")
+                    _log_asr_rtf(transcript, started)
+                    return transcript
+                print(f"⚠️ [ASR] parakeet result rejected ({reason}) — "
+                      f"falling back to whisper")
+            except Exception as e:
+                print(f"⚠️ [ASR] parakeet failed ({type(e).__name__}: {e}) — "
+                      f"falling back to whisper")
 
-    return _transcribe_with_whisper(media_path)
+        transcript = _transcribe_with_whisper(media_path)
+        _log_asr_rtf(transcript, started)
+        return transcript
+    finally:
+        # The shared wav only helps while this job transcribes; drop it so
+        # temp files don't accumulate across jobs in a long-lived worker.
+        _release_shared_wav()

@@ -4,9 +4,22 @@ import uuid
 import json
 from concurrent.futures import ThreadPoolExecutor
 
+import gemini_worker  # no circular: gemini_worker only imports clip_selection
 from google import genai
 from google.genai import types
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
+
+
+def _gemini_call(client, model, contents, config=None, who="Gemini"):
+    """generate_content with the shared transient-error retry policy.
+
+    Same 503/429 classification, backoff and deadline as the main pipeline
+    stages (gemini_worker.call_with_retry) — a demand spike no longer kills
+    a job that was one retry away from its thumbnail.
+    """
+    return gemini_worker.call_with_retry(
+        lambda: client.models.generate_content(model=model, contents=contents, config=config),
+        who=who)
 
 # Text/analysis model (titles, concepts, description). Deliberately NOT tied to
 # GEMINI_MODEL: the pipeline runs flash-lite for a closed-choice layout pick,
@@ -114,11 +127,8 @@ OUTPUT JSON:
 }}"""
 
     print("🤖 [Thumbnail] Brainstorming titles...")
-    response = client.models.generate_content(
-        model=TEXT_MODEL,
-        contents=frames + [brainstorm_prompt],
-        config=types.GenerateContentConfig(response_mime_type="application/json"),
-    )
+    response = _gemini_call(client, TEXT_MODEL, frames + [brainstorm_prompt],
+                            types.GenerateContentConfig(response_mime_type="application/json"))
     try:
         draft = _parse_json(response.text)
     except (json.JSONDecodeError, AttributeError):
@@ -163,11 +173,8 @@ OUTPUT JSON:
 }}"""
 
     print("🧐 [Thumbnail] Scoring titles...")
-    response = client.models.generate_content(
-        model=TEXT_MODEL,
-        contents=[critic_prompt],
-        config=types.GenerateContentConfig(response_mime_type="application/json"),
-    )
+    response = _gemini_call(client, TEXT_MODEL, [critic_prompt],
+                            types.GenerateContentConfig(response_mime_type="application/json"))
     try:
         picked = _parse_json(response.text)
         titles = [t for t in picked.get("titles", []) if isinstance(t, str) and t.strip()]
@@ -231,13 +238,8 @@ OUTPUT JSON:
     "language": "ISO 639-1 code of the language the titles are written in"
 }}"""
 
-    response = client.models.generate_content(
-        model=TEXT_MODEL,
-        contents=[prompt],
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json"
-        )
-    )
+    response = _gemini_call(client, TEXT_MODEL, [prompt],
+                            types.GenerateContentConfig(response_mime_type="application/json"))
 
     try:
         result = _parse_json(response.text)
@@ -403,11 +405,8 @@ Per concept give:
 OUTPUT JSON:
 {{"concepts": [{{"text": "...", "text_position": "left", "text_color": "yellow", "scene": "...", "why": "..."}}, ...]}}"""
 
-    response = client.models.generate_content(
-        model=TEXT_MODEL,
-        contents=[prompt],
-        config=types.GenerateContentConfig(response_mime_type="application/json"),
-    )
+    response = _gemini_call(client, TEXT_MODEL, [prompt],
+                            types.GenerateContentConfig(response_mime_type="application/json"))
     try:
         concepts = _parse_json(response.text).get("concepts", [])
     except (json.JSONDecodeError, AttributeError):
@@ -626,14 +625,13 @@ Style: high contrast, saturated colours, crisp subject separation, cinematic lig
                    "body type. Photorealistic, like a photo of them; do not idealize, slim, rejuvenate or "
                    "stylize them. Expression may change slightly but must stay natural and true to their face.")
 
-    response = client.models.generate_content(
-        model=IMAGE_MODEL,
-        contents=reference_images + [prompt],
-        config=types.GenerateContentConfig(
+    response = _gemini_call(
+        client, IMAGE_MODEL, reference_images + [prompt],
+        types.GenerateContentConfig(
             response_modalities=["TEXT", "IMAGE"],
             image_config=types.ImageConfig(aspect_ratio="16:9", image_size="2K"),
         ),
-    )
+        who="Gemini image")
     if not response.parts:
         cand = (response.candidates or [None])[0]
         reason = getattr(cand, "finish_reason", None) or getattr(response, "prompt_feedback", None)
@@ -774,10 +772,7 @@ REQUIREMENTS:
 OUTPUT: Return ONLY the description text (no JSON wrapper, no markdown code blocks). The description should be ready to paste directly into YouTube."""
 
     print("🤖 [Thumbnail] Generating YouTube description with chapters...")
-    response = client.models.generate_content(
-        model=TEXT_MODEL,
-        contents=[prompt],
-    )
+    response = _gemini_call(client, TEXT_MODEL, [prompt])
 
     description = response.text.strip()
     # Clean up any accidental markdown wrappers

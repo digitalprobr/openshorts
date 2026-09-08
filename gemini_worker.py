@@ -1,7 +1,10 @@
 import argparse
 import json
 import os
+import random
+import re
 import sys
+import time
 from typing import List, Optional
 
 from dotenv import load_dotenv
@@ -435,6 +438,95 @@ def raise_if_blocked(response):
             raise GeminiBlockedError(
                 f"Gemini blocked its answer for this video ({name}). The AI "
                 "provider's usage policies reject this material, so it can't be analyzed.")
+
+
+# --- shared transient-error policy (docs/transcription_gemini_fix.md Pt 2) ---
+#
+# One classification + backoff implementation for every Gemini call site, so
+# an outage is survived the same way everywhere instead of each module having
+# its own (or no) retry loop.
+
+# Capacity errors: Google refusing because the model/region has no headroom
+# ("high demand"). These get MORE attempts than generic transients and are the
+# signal for the model fallback chain and the circuit breaker.
+CAPACITY_TOKENS = ("503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED")
+
+# Everything else worth retrying once or twice: brief server faults, network
+# blips, empty bodies (200 with nothing parseable), schema misses from small
+# models, and OpenAI-compatible server shapes (model loading, busy vLLM).
+TRANSIENT_TOKENS = CAPACITY_TOKENS + (
+    "500", "INTERNAL", "overloaded", "Deadline",
+    "empty response body", "did not contain a JSON object",
+    "Failed to parse Gemini JSON response",
+    "ConnectError", "ReadTimeout", "RemoteProtocolError", "502", "504",
+    "validation error",
+)
+
+# Hard ceiling on one stage's retry budget: a doomed retry storm must never
+# outlive this, so the model chain / fallback provider still gets its turn.
+STAGE_RETRY_DEADLINE_SECONDS = 90.0
+
+
+def is_capacity_error(msg) -> bool:
+    """True for demand/capacity failures (503 UNAVAILABLE, 429, exhaustion)."""
+    text = str(msg or "")
+    return any(tok in text for tok in CAPACITY_TOKENS)
+
+
+def is_transient_error(msg) -> bool:
+    """True when retrying the same call can plausibly succeed."""
+    text = str(msg or "")
+    return any(tok in text for tok in TRANSIENT_TOKENS)
+
+
+def retry_delay(msg, attempt, base=5.0, cap=30.0):
+    """Seconds to sleep before the next attempt (exponential, with jitter).
+
+    Honors Google's ``retryDelay`` (e.g. ``'retryDelay': '26s'`` embedded in
+    429/503 payloads) and proxy ``Retry-After`` headers when present — the
+    server knows its load better than our backoff curve. Otherwise
+    exponential (base 5s, capped 30s) with ±20% jitter so concurrent jobs
+    don't retry in lockstep.
+    """
+    text = str(msg or "")
+    m = (re.search(r"retryDelay['\"]?\s*[:=]\s*['\"]?(\d+(?:\.\d+)?)\s*s", text,
+                   re.IGNORECASE)
+         or re.search(r"retry[-_ ]?after['\"]?\s*[:=]\s*['\"]?(\d+(?:\.\d+)?)",
+                      text, re.IGNORECASE))
+    if m:
+        return max(1.0, min(float(m.group(1)), 60.0))
+    return min(base * (2 ** (max(1, attempt) - 1)), cap) * random.uniform(0.8, 1.2)
+
+
+def call_with_retry(fn, *, who="Gemini", max_attempts=3,
+                    deadline_seconds=STAGE_RETRY_DEADLINE_SECONDS):
+    """Run ``fn`` with the shared transient-error policy.
+
+    ``fn`` is a zero-arg callable (usually ``lambda: client.models.generate_content(...)``).
+    Transient failures are retried with retry_delay(); capacity failures get
+    extra attempts (they are load-shaped, not bugs); anything else — and a
+    deterministic policy block (GeminiBlockedError) — propagates immediately.
+    A stage never retries past ``deadline_seconds``.
+    """
+    deadline = time.monotonic() + deadline_seconds
+    attempt = 0
+    while True:
+        try:
+            return fn()
+        except GeminiBlockedError:
+            raise
+        except Exception as e:
+            msg = str(e)
+            if not is_transient_error(msg):
+                raise
+            attempt += 1
+            max_for_error = 5 if is_capacity_error(msg) else max_attempts
+            if attempt >= max_for_error or time.monotonic() > deadline:
+                raise
+            wait = retry_delay(msg, attempt)
+            print(f"⚠️ {who} transient error (attempt {attempt}/{max_for_error}), "
+                  f"retrying in {wait:.1f}s: {msg[:150]}")
+            time.sleep(wait)
 
 
 def _get_response_text(response) -> str:

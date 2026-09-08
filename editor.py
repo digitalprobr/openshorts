@@ -10,6 +10,15 @@ from pydantic import BaseModel
 
 from edit_builder import build_filter_string
 from ffmpeg_utils import video_encode_args, QUALITY, METADATA_SCRUB
+import gemini_worker  # no circular: gemini_worker only imports clip_selection
+
+
+def _call_gemini(editor, contents, config, who="Gemini"):
+    """generate_content with the shared transient-error retry policy."""
+    return gemini_worker.call_with_retry(
+        lambda: editor.client.models.generate_content(
+            model=editor.model_name, contents=contents, config=config),
+        who=who)
 
 
 class EditDecision(BaseModel):
@@ -147,23 +156,16 @@ class VideoEditor:
                 response_schema=EditPlan,
             )
         try:
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=[video_file_obj, prompt],
-                config=config,
-            )
+            response = _call_gemini(self, [video_file_obj, prompt], config)
         except Exception as e:
             if getattr(config, "media_resolution", None) is None:
                 raise
             print(f"⚠️ media_resolution=low rejected ({e}); retrying with defaults...")
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=[video_file_obj, prompt],
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=EditPlan,
-                ),
-            )
+            response = _call_gemini(self, [video_file_obj, prompt],
+                                    types.GenerateContentConfig(
+                                        response_mime_type="application/json",
+                                        response_schema=EditPlan,
+                                    ))
 
         raw_edits = self._extract_edits(response)
         if raw_edits is None:
@@ -237,13 +239,10 @@ class VideoEditor:
         """
 
         print("🤖 Asking Gemini for Remotion effects config...")
-        response = self.client.models.generate_content(
-            model=self.model_name,
-            contents=[video_file_obj, prompt],
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json"
-            )
-        )
+        response = _call_gemini(self, [video_file_obj, prompt],
+                                types.GenerateContentConfig(
+                                    response_mime_type="application/json"
+                                ))
 
         print(f"🔍 DEBUG: Gemini Raw Response:\n{response.text}")
 
@@ -402,11 +401,8 @@ class VideoEditor:
         Output JSON only: {{"filter_string": "..."}}
         """
         try:
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=prompt,
-                config=types.GenerateContentConfig(response_mime_type="application/json"),
-            )
+            response = _call_gemini(self, prompt,
+                                    types.GenerateContentConfig(response_mime_type="application/json"))
             text = (response.text or "").strip()
             start_idx = text.find('{')
             end_idx = text.rfind('}')

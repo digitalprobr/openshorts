@@ -198,15 +198,16 @@ def detect_content_ranges(video_path, video_duration):
                 return []
             time.sleep(2)
 
-        response = client.models.generate_content(
-            model=model_name,
-            contents=[file_upload,
-                      gemini_worker.WIDE_CONTENT_PROMPT_TEMPLATE.format(
-                          video_duration=video_duration)],
-            config=genai_types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=gemini_worker.WideContentResponse,
-            ))
+        response = gemini_worker.call_with_retry(
+            lambda: client.models.generate_content(
+                model=model_name,
+                contents=[file_upload,
+                          gemini_worker.WIDE_CONTENT_PROMPT_TEMPLATE.format(
+                              video_duration=video_duration)],
+                config=genai_types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=gemini_worker.WideContentResponse,
+                )))
         gemini_worker.raise_if_blocked(response)
         raw = (json.loads(response.text) or {}).get("ranges") or []
     except Exception as e:

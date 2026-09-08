@@ -1,3 +1,9 @@
+import os
+# Ultralytics imports matplotlib, which on Windows auto-selects the Tk GUI
+# backend and prints "Backend tkagg is interactive backend. Turning interactive
+# mode on." inside the headless job worker. Pin the non-interactive backend
+# before anything imports matplotlib.
+os.environ.setdefault("MPLBACKEND", "Agg")
 import time
 import cv2
 import subprocess
@@ -12,7 +18,6 @@ from scenedetect import open_video, SceneManager
 from scenedetect.detectors import ContentDetector
 from ultralytics import YOLO
 import torch
-import os
 import numpy as np
 from tqdm import tqdm
 import yt_dlp
@@ -29,7 +34,8 @@ from clip_selection import (build_transcript_windows, clip_count_targets,
                             clip_duration_bounds, snap_clip_to_words,
                             trim_to_best)
 from ffmpeg_utils import (video_encode_args, audio_encode_args, QUALITY,
-                          QUALITY_FAST, METADATA_SCRUB)
+                          QUALITY_FAST, METADATA_SCRUB,
+                          require_ffmpeg, FFmpegNotFoundError)
 from dotenv import load_dotenv
 import json
 
@@ -775,7 +781,10 @@ def download_youtube_video(url, output_dir="."):
     import file_hosts
     url = file_hosts.resolve(url)
 
-    print(f"🔍 Debug: yt-dlp version: {yt_dlp.version.__version__}")
+    # yt_dlp.version is injected at runtime, so reach it defensively (Pylance
+    # cannot see the attribute and older builds may not expose it at all).
+    yt_dlp_version = getattr(getattr(yt_dlp, "version", None), "__version__", "unknown")
+    print(f"🔍 Debug: yt-dlp version: {yt_dlp_version}")
     print("📥 Downloading video from YouTube...")
     step_start_time = time.time()
 
@@ -880,7 +889,7 @@ def download_youtube_video(url, output_dir="."):
     def _attempt(extractor_args, fmt, proxy, cookies=True):
         _dl_bytes["total"] = 0
         _dl_bytes["partial"] = 0
-        with yt_dlp.YoutubeDL(_base_opts(extractor_args, proxy, cookies)) as ydl:
+        with yt_dlp.YoutubeDL(_base_opts(extractor_args, proxy, cookies)) as ydl:  # type: ignore[arg-type]
             info = ydl.extract_info(url, download=False)
         sanitized = sanitize_filename(info.get('title', 'youtube_video'))
         expected = os.path.join(output_dir, f'{sanitized}.mp4')
@@ -893,7 +902,7 @@ def download_youtube_video(url, output_dir="."):
             'merge_output_format': 'mp4', 'overwrites': True,
             'progress_hooks': [_progress_hook],
         }
-        with yt_dlp.YoutubeDL(dl_opts) as ydl:
+        with yt_dlp.YoutubeDL(dl_opts) as ydl:  # type: ignore[arg-type]
             ydl.download([url])
         return sanitized
 
@@ -965,13 +974,40 @@ def download_youtube_video(url, output_dir="."):
 
     if sanitized_title is None:
         import sys
+        err_text = str(last_err) if last_err is not None else ""
+        # Classify the terminal error so the reason matches reality. The old
+        # message blamed "YouTube blocked the request" for every failure, which
+        # misdiagnosed local gaps (e.g. missing ffmpeg) as blocks.
+        lowered = err_text.lower()
+        if 'ffmpeg' in lowered and 'not installed' in lowered:
+            reason = ("ffmpeg is not installed on the server, so yt-dlp cannot "
+                      "merge the video and audio streams into one file.")
+            solution = ("👇 SOLUTION FOR USER: install ffmpeg on the server "
+                        "('winget install Gyan.FFmpeg' on Windows, "
+                        "'apt install ffmpeg' in the container) and retry.")
+        elif 'sign in to confirm' in lowered or 'not a bot' in lowered:
+            reason = "YouTube flagged the request as a bot."
+            solution = ("👇 SOLUTION FOR USER: configure YOUTUBE_COOKIES and/or "
+                        "proxies for this server, or download the video manually "
+                        "and use the 'Upload Video' tab.")
+        elif 'video unavailable' in lowered:
+            reason = "The video is unavailable (private, deleted or region-locked)."
+            solution = ("👇 SOLUTION FOR USER: check the URL; if it plays in a "
+                        "browser, try again later.")
+        else:
+            reason = "YouTube blocked the request or the download tooling is out of date."
+            solution = "👇 SOLUTION FOR USER: download the video manually and use the 'Upload Video' tab."
+        if last_err is None:
+            # Unreachable in practice (an attempt that produced no exception
+            # would have set sanitized_title), but keep the raise provable.
+            last_err = RuntimeError("YouTube download failed: no download attempts were configured")
         error_msg = f"""
 ❌ ================================================================= ❌
 ❌ FATAL ERROR: YOUTUBE DOWNLOAD FAILED (all strategies)
 ❌ ================================================================= ❌
-REASON: YouTube blocked the request or the download tooling is out of date.
-👇 SOLUTION FOR USER: download the video manually and use the 'Upload Video' tab.
-Technical Details: {str(last_err)}
+REASON: {reason}
+{solution}
+Technical Details: {err_text}
 """
         print(error_msg, file=sys.stdout)
         print(error_msg, file=sys.stderr)
@@ -1313,6 +1349,11 @@ def process_video_to_vertical(input_video, final_output_video, aspect_ratio=ASPE
          '-framerate', str(fps), '-i', 'pipe:0',
          *video_encode_args(QUALITY_FAST), '-an', silent_video_path],
         stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    if encoder.stdin is None or encoder.stderr is None:
+        # Popen only leaves the pipes None when they were not requested; this
+        # also turns a missing ffmpeg binary (file-not-found before Popen)
+        # into a clear failure instead of an AttributeError deep in the loop.
+        raise RuntimeError("ffmpeg encoder pipes could not be opened (is ffmpeg installed and on PATH?)")
 
     reader = cv2.VideoCapture(input_video)
     frame_total = int(reader.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -1517,9 +1558,72 @@ def transcribe_video(video_path):
 
     return transcript
 
+def _gemini_model_chain(model_name):
+    """Primary model first, then ``GEMINI_FALLBACK_MODELS`` (dedup, order kept).
+
+    503 'high demand' is per-model capacity: when flash-lite is saturated,
+    another model in the same region usually still has headroom. Default
+    chain: [GEMINI_MODEL, gemini-2.5-flash-lite].
+    """
+    chain = [model_name]
+    raw = os.environ.get("GEMINI_FALLBACK_MODELS", "gemini-2.5-flash-lite")
+    for m in raw.split(","):
+        m = m.strip()
+        if m and m not in chain:
+            chain.append(m)
+    return chain
+
+
+def _call_fallback_provider(prompt, schema, reason):
+    """Run a text stage on the configured failure-time fallback provider."""
+    model = llm_backend.fallback_model()
+    endpoint = llm_backend.fallback_base_url()
+    print(f"🔁 LLM fallback provider ({reason}): {endpoint} model={model}")
+    return _retry_transients(
+        lambda: llm_backend.generate_json(prompt, schema, model=model,
+                                          endpoint=endpoint,
+                                          api_key=os.environ.get("LLM_FALLBACK_API_KEY")),
+        who="LLM fallback", max_attempts=3,
+        deadline_seconds=gemini_worker.STAGE_RETRY_DEADLINE_SECONDS)
+
+
+def _retry_transients(fn, *, who, max_attempts=3,
+                      deadline_seconds=gemini_worker.STAGE_RETRY_DEADLINE_SECONDS):
+    """Bounded retry loop for the OpenAI-compatible paths (primary or fallback)."""
+    deadline = time.time() + deadline_seconds
+    attempt = 0
+    while True:
+        try:
+            return fn()
+        except Exception as e:
+            msg = str(e)
+            if not gemini_worker.is_transient_error(msg):
+                raise
+            attempt += 1
+            if attempt >= max_attempts or time.time() > deadline:
+                raise
+            wait = gemini_worker.retry_delay(msg, attempt)
+            print(f"⚠️ {who} transient error (attempt {attempt}/{max_attempts}), "
+                  f"retrying in {wait:.1f}s: {msg[:150]}")
+            time.sleep(wait)
+
+
 def _run_gemini_stage(client, model_name, prompt, schema):
     """One schema-enforced model call with transient-error backoff.
     Returns (parsed_dict, cost_analysis).
+
+    Retry policy (docs/transcription_gemini_fix.md Part 2):
+      - capacity errors (503/UNAVAILABLE/429) get 5 attempts per model, other
+        transient errors 3, all under a shared ~90s deadline;
+      - when a model's capacity budget is exhausted, the next model in
+        ``GEMINI_FALLBACK_MODELS`` takes over (503 'high demand' is per-model
+        capacity, not an outage);
+      - when the whole chain fails and a fallback provider is configured
+        (``LLM_FALLBACK_BASE_URL``), the stage re-runs there with the same
+        schema instead of failing the job;
+      - while the Gemini circuit breaker is open (recent consecutive capacity
+        failures), Gemini is skipped and the fallback provider is used
+        directly for the first stage of the cooldown window.
 
     With an OpenAI-compatible server configured (``llm_backend.active()``)
     the call goes there instead of Gemini and ``client`` is unused; the
@@ -1531,46 +1635,72 @@ def _run_gemini_stage(client, model_name, prompt, schema):
         response_mime_type="application/json",
         response_schema=schema,
     )
-    max_attempts = 3
-    for attempt in range(1, max_attempts + 1):
-        try:
-            if use_local:
-                return llm_backend.generate_json(prompt, schema, model=model_name)
-            response = client.models.generate_content(model=model_name, contents=prompt, config=config)
-            # Policy blocks are deterministic — retrying only burns quota and
-            # time, and the user deserves the real reason instead of a generic
-            # "empty response" (prod 23-jul: PROHIBITED_CONTENT on every try).
-            gemini_worker.raise_if_blocked(response)
-            # Parsing lives inside the retry loop on purpose: Gemini sometimes
-            # returns 200 with an empty body, which raises here rather than at
-            # the call. Retrying that recovered every occurrence seen in prod
-            # (22-jul-2026) — the same payload succeeds on the next attempt.
-            parsed_obj = getattr(response, "parsed", None)
-            if parsed_obj is not None:
-                parsed = parsed_obj.model_dump() if hasattr(parsed_obj, "model_dump") else parsed_obj
-            else:
-                parsed = gemini_worker._parse_json_response_text(
-                    gemini_worker._get_response_text(response))
-            return parsed, gemini_worker._calculate_cost_analysis(response, model_name)
-        except gemini_worker.GeminiBlockedError:
-            raise  # deterministic policy block — never retry
-        except Exception as e:
-            msg = str(e)
-            transient = any(tok in msg for tok in (
-                '503', 'UNAVAILABLE', '429', 'RESOURCE_EXHAUSTED',
-                '500', 'INTERNAL', 'overloaded', 'Deadline',
-                'empty response body', 'did not contain a JSON object',
-                'Failed to parse Gemini JSON response',
-                # OpenAI-compatible servers: model still loading, busy, or a
-                # small model that skipped a required field this time.
-                'ConnectError', 'ReadTimeout', 'RemoteProtocolError', '502', '504',
-                'validation error'))
-            if attempt == max_attempts or not transient:
+    if use_local:
+        return _retry_transients(
+            lambda: llm_backend.generate_json(prompt, schema, model=model_name),
+            who="LLM server")
+
+    if llm_backend.fallback_active() and llm_backend.gemini_degraded():
+        return _call_fallback_provider(
+            prompt, schema, "Gemini circuit open after recent capacity failures")
+
+    deadline = time.time() + gemini_worker.STAGE_RETRY_DEADLINE_SECONDS
+    chain = _gemini_model_chain(model_name)
+    for i, current_model in enumerate(chain):
+        is_last_model = i + 1 >= len(chain)
+        attempts = 0
+        while True:
+            try:
+                response = client.models.generate_content(model=current_model, contents=prompt, config=config)
+                # Policy blocks are deterministic — retrying only burns quota and
+                # time, and the user deserves the real reason instead of a generic
+                # "empty response" (prod 23-jul: PROHIBITED_CONTENT on every try).
+                gemini_worker.raise_if_blocked(response)
+                # Parsing lives inside the retry loop on purpose: Gemini sometimes
+                # returns 200 with an empty body, which raises here rather than at
+                # the call. Retrying that recovered every occurrence seen in prod
+                # (22-jul-2026) — the same payload succeeds on the next attempt.
+                parsed_obj = getattr(response, "parsed", None)
+                if parsed_obj is not None:
+                    parsed = parsed_obj.model_dump() if hasattr(parsed_obj, "model_dump") else parsed_obj
+                else:
+                    parsed = gemini_worker._parse_json_response_text(
+                        gemini_worker._get_response_text(response))
+                llm_backend.record_gemini_success()
+                return parsed, gemini_worker._calculate_cost_analysis(response, current_model)
+            except gemini_worker.GeminiBlockedError:
+                raise  # deterministic policy block — never retry
+            except Exception as e:
+                msg = str(e)
+                if not gemini_worker.is_transient_error(msg):
+                    raise
+                attempts += 1
+                capacity = gemini_worker.is_capacity_error(msg)
+                max_attempts = 5 if capacity else 3
+                if attempts < max_attempts and time.time() <= deadline:
+                    wait = gemini_worker.retry_delay(msg, attempts)
+                    print(f"⚠️ Gemini transient error on {current_model} "
+                          f"(attempt {attempts}/{max_attempts}), retrying in "
+                          f"{wait:.1f}s: {msg[:150]}")
+                    time.sleep(wait)
+                    continue
+                # This model is out of budget. A different model only helps for
+                # capacity errors ("high demand" is per-model); empty bodies and
+                # schema misses would just repeat on the next model.
+                if capacity:
+                    llm_backend.record_gemini_failure()
+                    if not is_last_model:
+                        print(f"⚠️ Gemini model {current_model} at capacity after "
+                              f"{attempts} attempts — switching to {chain[i + 1]}")
+                        break
+                if is_last_model and llm_backend.fallback_active():
+                    return _call_fallback_provider(
+                        prompt, schema,
+                        f"Gemini chain exhausted after {attempts} attempts on {current_model}")
                 raise
-            wait = 5 * (2 ** (attempt - 1))
-            who = "LLM server" if use_local else "Gemini"
-            print(f"⚠️ {who} transient error (attempt {attempt}/{max_attempts}), retrying in {wait}s: {msg[:150]}")
-            time.sleep(wait)
+    # Unreachable: every branch above returns or raises. Kept for the type
+    # checker and against future edits.
+    raise RuntimeError("Gemini stage failed: retries exhausted without returning a result")
 
 
 def _run_stage_split(client, model_name, items, build_prompt, schema, key, costs, label):
@@ -1781,6 +1911,9 @@ def get_visual_clips(video_path, video_duration, language="en"):
     file_upload = None
     try:
         file_upload = client.files.upload(file=video_path)
+        if file_upload is None or not file_upload.name:
+            print("❌ Gemini file upload returned no usable handle.")
+            return None
         deadline = time.time() + 180
         while True:
             info = client.files.get(name=file_upload.name)
@@ -1816,6 +1949,9 @@ def get_visual_clips(video_path, video_duration, language="en"):
         response = client.models.generate_content(
             model=model_name, contents=[file_upload, prompt], config=config)
         gemini_worker.raise_if_blocked(response)
+        if not response.text:
+            print("⚠️ Vision pass returned an empty response body.")
+            return None
         parsed = json.loads(response.text)
         shorts = parsed.get("shorts") or []
         # Clamp to the real duration; drop anything degenerate.
@@ -1832,7 +1968,7 @@ def get_visual_clips(video_path, video_duration, language="en"):
         cost = gemini_worker._calculate_cost_analysis(response, model_name)
         if cost:
             print(f"💰 Vision cost ({model_name}): ${cost.get('total_cost', 0):.6f}")
-        result = {"shorts": clean}
+        result: dict = {"shorts": clean}
         if cost:
             result["cost_analysis"] = cost
         return result
@@ -1843,7 +1979,7 @@ def get_visual_clips(video_path, video_duration, language="en"):
         print(f"❌ Gemini vision error: {e}")
         return None
     finally:
-        if file_upload is not None:
+        if file_upload is not None and file_upload.name:
             try:
                 client.files.delete(name=file_upload.name)
             except Exception:
@@ -1867,6 +2003,16 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     output_format = args.format
+
+    # Fail fast on a missing ffmpeg BEFORE minutes of download/transcription/
+    # inference work end in a cryptic "[WinError 2]" at the clip-cut step.
+    # Also patches this process's PATH so every bare "ffmpeg"/"ffprobe"
+    # subprocess call below resolves even when FFMPEG_PATH is set instead.
+    try:
+        require_ffmpeg()
+    except FFmpegNotFoundError as e:
+        print(f"❌ {e}")
+        raise SystemExit(1)
 
     script_start_time = time.time()
     
@@ -2099,6 +2245,13 @@ if __name__ == '__main__':
                     i = futures[future]
                     try:
                         future.result()
+                    except FileNotFoundError as e:
+                        # A FileNotFoundError here is Windows' CreateProcess
+                        # failing to find the ffmpeg EXECUTABLE (WinError 2),
+                        # not a missing input file — say so explicitly.
+                        print(f"   ❌ Clip {i+1} failed: ffmpeg executable "
+                              f"not found ({e}). Install ffmpeg on PATH or "
+                              f"set FFMPEG_PATH — see ffmpeg_utils._install_hint.")
                     except Exception as e:
                         print(f"   ❌ Clip {i+1} failed: {type(e).__name__}: {e}")
 

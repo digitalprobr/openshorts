@@ -1677,6 +1677,17 @@ def _purge_local_jobs_for_user(user_id) -> int:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Validate ffmpeg up-front: without it every render dies mid-job with a
+    # cryptic "[WinError 2]". Warn loudly but keep serving (the dashboard is
+    # still useful for diagnosing; Docker images always ship ffmpeg).
+    try:
+        import ffmpeg_utils
+        ffmpeg_utils.require_ffmpeg()
+    except ffmpeg_utils.FFmpegNotFoundError as e:
+        print("\n" + "=" * 70)
+        print(f"❌ STARTUP: {e}")
+        print("   Jobs will FAIL at the first render until this is fixed.")
+        print("=" * 70 + "\n")
     # Rehydrate finished jobs from disk before serving (survives restarts).
     _recover_jobs_from_disk()
     # Re-enqueue jobs that were mid-processing when we stopped (redeploy). Their
@@ -1998,6 +2009,12 @@ async def run_job(job_id, job_data):
         # Exception text can embed URLs with credentials (e.g. the proxy URL
         # inside a yt-dlp/httpx error) — scrub before it reaches client logs.
         jobs[job_id]['logs'].append(_scrub_secrets(f"Execution error: {str(e)}"))
+
+@app.get("/", tags=["System"])
+async def root():
+    """Root path: same liveness payload as /health so the API root answers
+    with a friendly 200 instead of FastAPI's {"detail": "Not Found"}."""
+    return {"status": "ok"}
 
 @app.get("/health", tags=["System"])
 async def health():

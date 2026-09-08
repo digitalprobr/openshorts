@@ -10,6 +10,7 @@ Only the codec/quality args live here; surrounding args (-movflags, -pix_fmt,
 audio codecs, filters) stay at each call site.
 """
 import os
+import shutil
 import subprocess
 import threading
 
@@ -111,7 +112,7 @@ def mark_ai_generated(path, detail=""):
     # warning (verified with ffprobe -show_entries format_tags).
     # -map 0 because ffmpeg's default picks one stream per type: a dubbed file
     # that ever ships two audio tracks would come back with one.
-    cmd = ["ffmpeg", "-y", "-i", path, "-map", "0", "-c", "copy",
+    cmd = [ffmpeg_binary(), "-y", "-i", path, "-map", "0", "-c", "copy",
            "-metadata", f"comment={note}",
            "-movflags", "+faststart", tmp]
     try:
@@ -145,6 +146,143 @@ _nvenc_ok = None  # None = not probed yet
 _announced = False
 
 
+# --- Binary resolution ------------------------------------------------------
+#
+# Every ffmpeg invocation in this codebase historically used the bare string
+# "ffmpeg", which only works when the binary is on PATH. A machine without it
+# used to fail mid-job with a cryptic "FileNotFoundError: [WinError 2]" at the
+# clip-cut step, three minutes into a paid render. These helpers fix that:
+#
+#   FFMPEG_PATH env var > shutil.which("ffmpeg") > imageio-ffmpeg package
+#
+# FFMPEG_PATH may point at the ffmpeg executable itself OR at its bin folder.
+# resolve_ffmpeg() also prepends the binary's directory to THIS process's PATH
+# so every existing bare "ffmpeg"/"ffprobe" subprocess call site (main.py,
+# active_speaker.py, editor.py, ...) resolves even when the binary lives
+# outside the inherited PATH.
+
+_EXE = ".exe" if os.name == "nt" else ""
+
+_ffmpeg_bin = None
+_ffprobe_bin = None
+_bin_lock = threading.Lock()
+
+
+class FFmpegNotFoundError(RuntimeError):
+    """No usable ffmpeg binary could be located."""
+
+
+def _install_hint():
+    return (
+        "FFmpeg was not found. Fix it with ONE of:\n"
+        "  1. Install it:  winget install Gyan.FFmpeg   (or choco install ffmpeg,\n"
+        "     or download https://www.gyan.dev/ffmpeg/builds/ and add bin/ to PATH)\n"
+        "  2. Set the FFMPEG_PATH env var to the folder containing ffmpeg(.exe)\n"
+        "     — or to the ffmpeg(.exe) file itself\n"
+        "  3. pip install imageio-ffmpeg  (ffmpeg only; ffprobe still needs a\n"
+        "     full install)"
+    )
+
+
+def _candidates_from_ffmpeg_path_env():
+    """(ffmpeg, ffprobe) candidates from FFMPEG_PATH; (None, None) if unset."""
+    raw = os.environ.get("FFMPEG_PATH", "").strip().strip('"')
+    if not raw:
+        return None, None
+    if os.path.isfile(raw):
+        base = os.path.dirname(os.path.abspath(raw))
+        return os.path.abspath(raw), os.path.join(base, "ffprobe" + _EXE)
+    if os.path.isdir(raw):
+        return (os.path.join(raw, "ffmpeg" + _EXE),
+                os.path.join(raw, "ffprobe" + _EXE))
+    return None, None
+
+
+def _candidate_from_imageio():
+    try:
+        import imageio_ffmpeg  # optional dependency
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        return None
+
+
+def resolve_ffmpeg():
+    """Locate ffmpeg/ffprobe once per process (thread-safe, cached).
+
+    Returns (ffmpeg_path, ffprobe_path_or_None). Raises FFmpegNotFoundError
+    when nothing usable is found. Side effect: the resolved binary's folder
+    is prepended to this process's PATH so the bare "ffmpeg"/"ffprobe" strings
+    at all other call sites resolve too.
+    """
+    global _ffmpeg_bin, _ffprobe_bin
+    if _ffmpeg_bin is not None:
+        return _ffmpeg_bin, _ffprobe_bin
+    with _bin_lock:
+        if _ffmpeg_bin is not None:
+            return _ffmpeg_bin, _ffprobe_bin
+
+        ffmpeg = ffprobe = None
+        env_ff, env_fp = _candidates_from_ffmpeg_path_env()
+        if env_ff and os.path.isfile(env_ff):
+            ffmpeg = env_ff
+            if env_fp and os.path.isfile(env_fp):
+                ffprobe = env_fp
+        if ffmpeg is None:
+            ffmpeg = shutil.which("ffmpeg")
+        if ffmpeg is None:
+            ffmpeg = _candidate_from_imageio()
+        if not ffmpeg:
+            raise FFmpegNotFoundError(_install_hint())
+
+        # Prepend so this beats any stale entry; keep idempotent.
+        bin_dir = os.path.dirname(os.path.abspath(ffmpeg))
+        current = os.environ.get("PATH", "")
+        if bin_dir not in current.split(os.pathsep):
+            os.environ["PATH"] = bin_dir + os.pathsep + current
+
+        if ffprobe is None:
+            ffprobe = shutil.which("ffprobe")
+
+        _ffmpeg_bin, _ffprobe_bin = ffmpeg, ffprobe
+    return _ffmpeg_bin, _ffprobe_bin
+
+
+def ffmpeg_binary():
+    """Path to the ffmpeg executable (resolves once, then cached)."""
+    return resolve_ffmpeg()[0]
+
+
+def ffprobe_binary():
+    """Path to ffprobe, or None when only ffmpeg was found (imageio-ffmpeg)."""
+    return resolve_ffmpeg()[1]
+
+
+def require_ffmpeg():
+    """Startup validation: resolve the binaries and run `ffmpeg -version` once.
+
+    Raises FFmpegNotFoundError with human-fix instructions. Cheap (one short
+    subprocess); call it at process startup so a missing binary is discovered
+    before a job invests minutes of transcription/inference work.
+    """
+    ffmpeg, ffprobe = resolve_ffmpeg()
+    try:
+        r = subprocess.run([ffmpeg, "-version"], capture_output=True,
+                           timeout=30)
+    except (OSError, subprocess.SubprocessError) as e:
+        raise FFmpegNotFoundError(
+            f"ffmpeg at {ffmpeg!r} could not be executed: {e}\n"
+            + _install_hint()) from e
+    if r.returncode != 0:
+        raise FFmpegNotFoundError(
+            f"ffmpeg at {ffmpeg!r} exists but exits with code {r.returncode} "
+            f"on -version.\n" + _install_hint())
+    if ffprobe is None:
+        print("⚠️ [ffmpeg] ffprobe was not found (only ffmpeg). Features that "
+              "probe durations will fail until ffprobe is on PATH or "
+              "FFMPEG_PATH points at its folder.")
+    return ffmpeg, ffprobe
+
+
 def _probe_nvenc():
     """One tiny lavfi encode to prove h264_nvenc works end-to-end.
 
@@ -152,7 +290,7 @@ def _probe_nvenc():
     Any failure (no ffmpeg binary, no GPU, no driver libs) means False.
     """
     cmd = [
-        "ffmpeg", "-hide_banner", "-loglevel", "error",
+        ffmpeg_binary(), "-hide_banner", "-loglevel", "error",
         "-f", "lavfi", "-i", "color=black:s=256x256:d=0.1",
         "-c:v", "h264_nvenc", "-f", "null", "-",
     ]
