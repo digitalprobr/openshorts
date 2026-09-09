@@ -372,7 +372,16 @@ like the download does: an anonymous probe from the static IPs gets "Sign in
 to confirm you're not a bot" in bursts (4-sep-2026: ~10 probes in one hour,
 1.8 MB each on the per-GB proxy) because a datacenter IP's anonymous rate
 limit is low and we make ~400 YouTube hits a day from three of them, while
-the authenticated download sails through the same IPs. `main.py` prints `PROXY_ROUTE=<json>` after
+the authenticated download sails through the same IPs. But the **first**
+attempt on a route carries them and the second drops them, on the probe as
+on the download: with the cookies attached YouTube answers UNPLAYABLE for
+every client (`web_embedded`, `tv_downgraded`, `web` **and** `mweb`) on a
+share of videos, which yt-dlp reports as "Video unavailable" (9-sep-2026,
+same video on all three statics; anonymous on the same IP → 1080p 137+140).
+Without that anonymous second attempt the probe read a cookie problem as an
+IP problem and escalated to the per-GB proxy, which carries the same cookies
+and fails identically, while the download recovered for free on the same
+static. `main.py` prints `PROXY_ROUTE=<json>` after
 every download (winner, paid bytes across all attempts including failed
 paid ones, each free attempt's error); `app.py` persists it as a
 `proxy_usage` row at job end and pages Telegram when the paid proxy carried
