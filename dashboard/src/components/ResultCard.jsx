@@ -40,6 +40,10 @@ export default function ResultCard({ clip, index, jobId, durable, uploadPostKey,
     const [showModal, setShowModal] = useState(false);
     const [showDescModal, setShowDescModal] = useState(false);
     const [showSubtitleModal, setShowSubtitleModal] = useState(false);
+    // Caption style persisted server-side for this clip (metadata
+    // clips[i]['caption_style']); kept client-side too so the modal reopens
+    // showing the look that is actually burned into the delivered file.
+    const [appliedCaptionStyle, setAppliedCaptionStyle] = useState(clip?.caption_style || null);
     const [showWatermarkModal, setShowWatermarkModal] = useState(false);
     const { plan } = useAuth();
     const videoRef = React.useRef(null);
@@ -379,6 +383,7 @@ export default function ResultCard({ clip, index, jobId, durable, uploadPostKey,
             });
             if (!res.ok) throw new Error(await res.text());
             const data = await res.json();
+            setAppliedCaptionStyle(null);
             if (data.new_video_url) {
                 const serverUrl = getApiUrl(data.new_video_url);
                 setServerVideoFile(data.new_video_url.split('/').pop());
@@ -459,6 +464,24 @@ export default function ResultCard({ clip, index, jobId, durable, uploadPostKey,
 
             if (!res.ok) throw new Error(await res.text());
             const data = await res.json();
+            // Mirror of the caption_style the server persists into metadata —
+            // keeps the modal in sync on reopen without a round-trip.
+            setAppliedCaptionStyle({
+                look: options.style || 'classic',
+                alignment: options.position,
+                font_size: options.fontSize,
+                font_name: options.fontName,
+                font_color: options.fontColor,
+                border_color: options.borderColor,
+                border_width: options.borderWidth,
+                bg_color: options.bgColor,
+                bg_opacity: options.bgOpacity,
+                highlight_color: options.highlightColor,
+                effect: options.effect,
+                base_opacity: options.baseOpacity,
+                uppercase: options.uppercase,
+                bold: true,
+            });
             if (data.new_video_url) {
                 const serverUrl = getApiUrl(data.new_video_url);
                 setServerVideoFile(data.new_video_url.split('/').pop());
@@ -1130,6 +1153,7 @@ export default function ResultCard({ clip, index, jobId, durable, uploadPostKey,
                 jobId={jobId}
                 clipIndex={index}
                 existingHook={activeLayers.hook}
+                savedStyle={appliedCaptionStyle}
             />
 
             <HookModal

@@ -240,7 +240,12 @@ AUTO_CAPTION_STYLE = {
     "style": "karaoke",
     "alignment": "bottom",
     "font_name": "Anton",
-    "font_size": 44,
+    # 64 modal-units ≈ 21 in PlayResY-288 ASS space after the modal→ASS
+    # conversion (_ass_fontsize) — ~7% of the frame height, ≈140px on a
+    # 1080×1920 render. The original 112 (≈37 ASS, ~246px) filled nearly a
+    # quarter of the frame and read as a sizing bug; 64 keeps the bold
+    # short-form look at roughly half that.
+    "font_size": 64,
     "font_color": "#FFFFFF",
     "highlight_color": "#FFE500",
     "border_color": "#000000",
@@ -306,7 +311,7 @@ def generate_ass(transcript, clip_start, clip_end, output_path,
                  border_color="#000000", border_width=2,
                  highlight_color="#FFD700", bg_color="#000000", bg_opacity=0.0,
                  effect="none", base_opacity=1.0, uppercase=False,
-                 margin_v=SAFE_MARGIN_V, split_ranges=None):
+                 bold=True, margin_v=SAFE_MARGIN_V, split_ranges=None):
     """
     Generates a karaoke-style ASS file: each block is shown like the SRT path,
     but the currently spoken word is rendered in highlight_color (modern
@@ -322,10 +327,10 @@ def generate_ass(transcript, clip_start, clip_end, output_path,
     if not blocks:
         return False
 
-    # Match the SRT burn path: PlayResY 288 keeps font sizes consistent.
-    final_fontsize = int(_clamp_number(fontsize, 10, 200, 16) * 0.85)
-    if final_fontsize < 10:
-        final_fontsize = 10
+    # Same modal→ASS conversion as the SRT burn path: PlayResY 288, font size
+    # mapped from the modal's 1080p-preview pixels so the download matches the
+    # look approved in the modal (see MODAL_FONT_TO_ASS).
+    final_fontsize = _ass_fontsize(fontsize)
 
     align_map = {'top': 8, 'middle': 5, 'bottom': 2}
     ass_alignment = align_map.get(str(alignment).lower(), 2)
@@ -394,7 +399,7 @@ def generate_ass(transcript, clip_start, clip_end, output_path,
         "ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, "
         "Alignment, MarginL, MarginR, MarginV, Encoding\n"
         f"Style: Default,{safe_font},{final_fontsize},{primary_colour},{primary_colour},"
-        f"{outline_colour},{back_colour},1,0,0,0,100,100,0,0,{border_style},"
+        f"{outline_colour},{back_colour},{1 if bold else 0},0,0,0,100,100,0,0,{border_style},"
         f"{outline_width},0,{ass_alignment},10,10,{int(_clamp_number(margin_v, 0, 200, SAFE_MARGIN_V))},1\n"
         "\n"
         "[Events]\n"
@@ -474,6 +479,21 @@ def _clamp_number(value, lo, hi, default):
     return max(lo, min(hi, num))
 
 
+# The subtitle modal's fontSize is expressed as pixels on the 1080x1920 preview
+# composition (the Remotion layer renders fontSize * 2.2 px there). The burn
+# runs in libass virtual space (PlayResY=288), where the rendered text height
+# is fontsize / 288 of the frame. Mapping one onto the other:
+#   fontsize_ass = preview_px * (288 / 1920) = (fontSize * 2.2) * 0.15 ≈ 0.33
+# The old ×0.85 factor ignored the preview scale entirely, so every download
+# came out ~2.5x larger than the look approved in the modal.
+MODAL_FONT_TO_ASS = 0.33
+
+
+def _ass_fontsize(fontsize):
+    """Convert a modal font size to the ASS PlayResY=288 equivalent."""
+    return max(4, int(round(_clamp_number(fontsize, 4, 200, 16) * MODAL_FONT_TO_ASS)))
+
+
 def _sanitize_font_name(name):
     """Strip anything but [A-Za-z0-9 _-] so the font name can't inject extra
     ASS override fields (commas/braces/backslashes) into force_style."""
@@ -484,7 +504,7 @@ def _sanitize_font_name(name):
 def burn_subtitles(video_path, srt_path, output_path, alignment=2, fontsize=16,
                    font_name="Verdana", font_color="#FFFFFF",
                    border_color="#000000", border_width=2,
-                   bg_color="#000000", bg_opacity=0.0):
+                   bg_color="#000000", bg_opacity=0.0, bold=True):
     """
     Burns subtitles into the video using FFmpeg.
     Supports two modes:
@@ -501,11 +521,9 @@ def burn_subtitles(video_path, srt_path, output_path, alignment=2, fontsize=16,
     elif align_lower == 'bottom':
         ass_alignment = 2
 
-    # Font size scaling for ASS virtual resolution (PlayResY=288 default)
-    # For vertical 1080x1920 video, we need larger text for readability
-    final_fontsize = int(_clamp_number(fontsize, 10, 200, 16) * 0.85)
-    if final_fontsize < 10:
-        final_fontsize = 10
+    # Font size: same modal→ASS conversion as the karaoke ASS path
+    # (MODAL_FONT_TO_ASS) so both burns render the size the modal previewed.
+    final_fontsize = _ass_fontsize(fontsize)
 
     safe_font_name = _sanitize_font_name(font_name)
     bg_opacity = _clamp_number(bg_opacity, 0.0, 1.0, 0.0)
@@ -541,7 +559,7 @@ def burn_subtitles(video_path, srt_path, output_path, alignment=2, fontsize=16,
         f"Outline={outline_width},"
         f"Shadow=0,"
         f"MarginV={SAFE_MARGIN_V},"
-        f"Bold=1"
+        f"Bold={1 if bold else 0}"
     )
 
     # Let libass see the fonts bundled with the app (e.g. Anton for Impact)

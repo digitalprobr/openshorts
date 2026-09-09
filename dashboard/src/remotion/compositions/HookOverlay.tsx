@@ -117,7 +117,7 @@ const HookBox: React.FC<HookBoxProps> = ({ config, displayFrames }) => {
   }
 
   const positionStyle = POSITION_STYLE[config.position] ?? POSITION_STYLE.top;
-  const look = HOOK_LOOKS[config.style ?? "classic"] ?? HOOK_LOOKS.classic;
+  const look = HOOK_LOOKS[config.style ?? "yellow"] ?? HOOK_LOOKS.classic;
 
   // Base font size: 5% of 1080 width (matches hooks.py logic)
   const baseFontSize = 1080 * 0.05;

@@ -24,6 +24,10 @@ produces no usable words, or the detected language is outside its 25
 supported European languages (e.g. Japanese/Chinese/Arabic uploads).
 GPU whisper in turn falls back to CPU whisper on CUDA errors (VRAM is shared
 with other models on the host, so loads can OOM under load).
+
+The transcription is wrapped in a progress watchdog (ASR_TIMEOUT_SECONDS):
+if the backend stops yielding segments for the configured window, the decode
+is aborted with _ASRTimeoutError instead of blocking the job forever.
 """
 import os
 import subprocess
@@ -61,6 +65,88 @@ class _NullGate:
 
 
 _NULL_GATE = _NullGate()
+
+
+class _ASRTimeoutError(RuntimeError):
+    """Raised inside the transcribing thread when the watchdog fires.
+
+    Subclasses RuntimeError on purpose: run_whisper_transcription re-raises
+    any RuntimeError whose message doesn't contain "cuda", so a timeout never
+    triggers the GPU→CPU retry (retrying a wedged backend would just hang
+    again). The watchdog raises the class itself (PyThreadState_SetAsyncExc
+    takes a class, not an instance), hence the default message.
+    """
+
+    def __init__(self, *args):
+        super().__init__(args[0] if args else
+                         "transcription stalled: no segment "
+                         "within ASR_TIMEOUT_SECONDS")
+
+
+def _asr_timeout_seconds():
+    """Watchdog window: max seconds without a new segment before aborting.
+
+    ``ASR_TIMEOUT_SECONDS`` (default 900, 0 disables). Healthy decodes yield a
+    segment every few seconds of wall time regardless of audio length (RTF
+    stays well under 1 even on CPU), so a 15-minute gap means the backend is
+    wedged (onnxruntime/PyAV stuck in a C call) rather than slow.
+    """
+    raw = os.environ.get("ASR_TIMEOUT_SECONDS", "900").strip()
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return 900
+
+
+class _TranscribeWatchdog:
+    """Aborts a transcription that stops making progress.
+
+    faster-whisper's decode is lazy, but every segment yield returns to Python
+    bytecode, so a wedged backend can be interrupted with an async exception
+    (PyThreadState_SetAsyncExc) without killing the worker process. If the
+    backend hangs inside a single C call there is no bytecode boundary, and
+    the exception is only delivered when that call returns — late, but the
+    job still fails with a clear reason instead of blocking forever.
+    """
+
+    POLL = 5.0  # seconds between staleness checks
+
+    def __init__(self, timeout):
+        self.timeout = timeout
+        self.worker_ident = threading.get_ident()
+        self.last_progress = time.time()
+        self._stop = threading.Event()
+        self._thread = None
+
+    def start(self):
+        if self.timeout > 0:
+            self._thread = threading.Thread(
+                target=self._run, daemon=True, name="asr-watchdog")
+            self._thread.start()
+        return self
+
+    def update(self):
+        self.last_progress = time.time()
+
+    def stop(self):
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=self.POLL + 1)
+
+    def _run(self):
+        import ctypes
+        while not self._stop.wait(self.POLL):
+            stalled = time.time() - self.last_progress
+            if stalled < self.timeout:
+                continue
+            print(f"⏱️ [ASR] no transcription progress for {stalled:.0f}s "
+                  f"(ASR_TIMEOUT_SECONDS={self.timeout}) — aborting",
+                  flush=True)
+            ctypes.pythonapi.PyThreadState_SetAsyncExc(
+                ctypes.c_ulong(self.worker_ident),
+                ctypes.py_object(_ASRTimeoutError),
+            )
+            return
 
 
 class _TranscribeProgress:
@@ -160,27 +246,48 @@ def _media_duration_seconds(media_path) -> float:
 
 def _run_whisper_once(media_path, **params):
     model, device = _get_whisper_model()
+    cfg = get_whisper_config()
+    if _whisper_force_cpu:
+        cfg["device"] = "cpu"
+        cfg["compute_type"] = "int8"
     batch = _whisper_batch_size()
+    duration = _media_duration_seconds(media_path)
     # Batched decode is only trusted on longer audio: very short files hit
     # batch edge cases (sub-second chunks, empty VAD output). Unknown
     # duration (0.0) also takes the sequential path.
-    if batch > 1 and device != "cpu" and _media_duration_seconds(media_path) >= 60:
+    batched = False
+    if batch > 1 and device != "cpu" and duration >= 60:
         pipeline = _get_batched_pipeline(model)
         if pipeline is not None:
+            batched = True
             params = {**params, "batch_size": batch}
             model = pipeline
+    # One line that makes "stuck" distinguishable from "slow": config, decode
+    # mode and the size of the job, before anything starts.
+    print(f"🎙️ [ASR] whisper {cfg['model_size']}/{cfg['compute_type']} on "
+          f"{device}, {'batched' if batched else 'sequential'} decode, "
+          f"{duration:.0f}s of audio — decoding + VAD…", flush=True)
     gate = _ASR_GATE if device != "cpu" else _NULL_GATE
     with gate:
-        segments, info = model.transcribe(media_path, **params)
-        progress = _TranscribeProgress(getattr(info, "duration", 0))
-        materialized = []
-        for segment in segments:
-            materialized.append(segment)
-            progress.update(segment.end)
-        # VAD trims trailing silence, so the last segment can end short of the
-        # media duration — force the 100% line.
-        progress.update(progress.total)
-        return materialized, info
+        watchdog = _TranscribeWatchdog(_asr_timeout_seconds()).start()
+        try:
+            segments, info = model.transcribe(media_path, **params)
+            # transcribe() eagerly decodes the whole audio track (PyAV) and
+            # runs VAD before returning the lazy generator — on long media
+            # that preamble is minutes of silence, so mark its end.
+            print("🎙️ [ASR] audio decoded — transcribing", flush=True)
+            progress = _TranscribeProgress(getattr(info, "duration", 0))
+            materialized = []
+            for segment in segments:
+                materialized.append(segment)
+                progress.update(segment.end)
+                watchdog.update()
+            # VAD trims trailing silence, so the last segment can end short of the
+            # media duration — force the 100% line.
+            progress.update(progress.total)
+            return materialized, info
+        finally:
+            watchdog.stop()
 
 
 def run_whisper_transcription(media_path, **params):
@@ -370,12 +477,17 @@ def _transcribe_with_parakeet(media_path):
     except OSError:
         duration = 0.0
     with _ASR_GATE:
-        progress = _TranscribeProgress(duration)
-        results = []
-        for seg in model.recognize(wav_path):
-            results.append(seg)
-            progress.update(float(seg.end))
-        progress.update(progress.total)
+        watchdog = _TranscribeWatchdog(_asr_timeout_seconds()).start()
+        try:
+            progress = _TranscribeProgress(duration)
+            results = []
+            for seg in model.recognize(wav_path):
+                results.append(seg)
+                progress.update(float(seg.end))
+                watchdog.update()
+            progress.update(progress.total)
+        finally:
+            watchdog.stop()
     # The cached wav is NOT removed here: a whisper fallback (or a job retry
     # in this process) reuses it. transcribe_media releases it when done.
 

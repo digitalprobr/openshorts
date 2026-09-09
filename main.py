@@ -1057,7 +1057,26 @@ def finalize_clip_passthrough(input_video, final_output_video):
     return True
 
 
-def auto_caption_clip(clip_path, transcript, clip_start, clip_end, split_ranges=None):
+def effective_caption_style(style_override=None):
+    """Merge the auto-caption default with a clip's persisted style override.
+
+    Returns ``(style, look)``: ``style`` is the dict every burn field is read
+    from, ``look`` the 'karaoke' | 'classic' render-path selector. Shared by
+    auto_caption_clip and the clip worker so the style persisted into
+    ``clips[i]['caption_style']`` is exactly the one that was burned — the
+    subtitle modal restores it on reopen (parity between preview, download
+    and re-burn).
+    """
+    import subtitles as _subs
+    style = dict(_subs.AUTO_CAPTION_STYLE)
+    override = dict(style_override or {})
+    look = override.pop('look', 'karaoke') or 'karaoke'
+    style.update(override)
+    return style, look
+
+
+def auto_caption_clip(clip_path, transcript, clip_start, clip_end, split_ranges=None,
+                      style_override=None):
     """Burn the default caption style onto a finished clip.
 
     ``split_ranges``: (start, end) stretches, in clip seconds, rendered with
@@ -1084,7 +1103,10 @@ def auto_caption_clip(clip_path, transcript, clip_start, clip_end, split_ranges=
         return None  # silent video: nothing to caption
     try:
         import subtitles as _subs
-        style = _subs.AUTO_CAPTION_STYLE
+        # A clip the user restyled in the subtitle modal carries its exact
+        # style in metadata (clips[i]['caption_style']); re-burns (hook, edit,
+        # reframe) must restore THAT look, not the default auto one.
+        style, look = effective_caption_style(style_override)
         output_dir = os.path.dirname(clip_path)
         stem = os.path.basename(clip_path)
         generation_id = int(time.time())
@@ -1117,23 +1139,43 @@ def auto_caption_clip(clip_path, transcript, clip_start, clip_end, split_ranges=
         if split_ranges is None:
             import layout_ranges as _layouts
             split_ranges = _layouts.split_ranges(_layouts.read(clip_path))
-        if not _subs.generate_ass(
-                transcript, clip_start, clip_end, ass_path,
-                split_ranges=split_ranges,
-                max_chars=style["max_chars"], max_duration=style["max_duration"],
+        bold = bool(style.get("bold", True))
+        if look == "classic":
+            # Persisted classic style: uniform-color SRT burn with the exact
+            # params the modal sent — no karaoke highlight, no dimmed words.
+            srt_path = os.path.join(
+                output_dir, f"autosubs_{generation_id}_{uuid.uuid4().hex[:8]}.srt")
+            if not _subs.generate_srt(
+                    transcript, clip_start, clip_end, srt_path,
+                    max_chars=style["max_chars"], max_duration=style["max_duration"]):
+                print("   ℹ️ No words in range — clip ships without captions.")
+                return None
+            _subs.burn_subtitles(
+                clip_path, srt_path, out_path,
                 alignment=style["alignment"], fontsize=style["font_size"],
                 font_name=style["font_name"], font_color=style["font_color"],
                 border_color=style["border_color"], border_width=style["border_width"],
-                highlight_color=style["highlight_color"], effect=style["effect"],
-                base_opacity=style["base_opacity"], uppercase=style["uppercase"]):
-            print("   ℹ️ No words in range — clip ships without captions.")
-            return None
+                bg_color=style.get("bg_color", "#000000"),
+                bg_opacity=style.get("bg_opacity", 0.0), bold=bold)
+        else:
+            if not _subs.generate_ass(
+                    transcript, clip_start, clip_end, ass_path,
+                    split_ranges=split_ranges,
+                    max_chars=style["max_chars"], max_duration=style["max_duration"],
+                    alignment=style["alignment"], fontsize=style["font_size"],
+                    font_name=style["font_name"], font_color=style["font_color"],
+                    border_color=style["border_color"], border_width=style["border_width"],
+                    highlight_color=style["highlight_color"], effect=style["effect"],
+                    base_opacity=style["base_opacity"], uppercase=style["uppercase"],
+                    bold=bold):
+                print("   ℹ️ No words in range — clip ships without captions.")
+                return None
 
-        _subs.burn_subtitles(
-            clip_path, ass_path, out_path,
-            alignment=style["alignment"], fontsize=style["font_size"],
-            font_name=style["font_name"], font_color=style["font_color"],
-            border_color=style["border_color"], border_width=style["border_width"])
+            _subs.burn_subtitles(
+                clip_path, ass_path, out_path,
+                alignment=style["alignment"], fontsize=style["font_size"],
+                font_name=style["font_name"], font_color=style["font_color"],
+                border_color=style["border_color"], border_width=style["border_width"])
         print(f"   💬 Captions burned: {os.path.basename(out_path)}")
         return out_path
     except Exception as e:
@@ -1157,7 +1199,7 @@ def auto_hook_clip(clip_path, clip):
     text = (clip.get('viral_hook_text') or '').strip()
     if not text:
         return None
-    style = os.environ.get("AUTO_HOOK_STYLE", "classic")
+    style = os.environ.get("AUTO_HOOK_STYLE", "yellow")
     try:
         seconds = float(os.environ.get("AUTO_HOOK_SECONDS", "5"))
     except ValueError:
@@ -1165,12 +1207,12 @@ def auto_hook_clip(clip_path, clip):
     try:
         from hooks import add_hook_to_video, HOOK_STYLES
         if style not in HOOK_STYLES:
-            style = "classic"
+            style = "yellow"
         output_dir = os.path.dirname(clip_path)
         out_path = os.path.join(
             output_dir, f"hooked_{int(time.time())}_{os.path.basename(clip_path)}")
         add_hook_to_video(clip_path, text, out_path, position="top",
-                          duration=seconds, style=style)
+                          duration=seconds, style=style, font_scale=1.3)
         print(f"   🪝 Hook burned ({style}, {seconds:g}s): {text}")
         return out_path, {"text": text, "style": style, "position": "top",
                           "duration_seconds": seconds}
@@ -2220,6 +2262,17 @@ if __name__ == '__main__':
                         captioned = auto_caption_clip(
                             deliver_path, transcript, start, end,
                             split_ranges=_layouts.split_ranges(clip['layout_ranges']))
+                        if captioned:
+                            # Persist the exact look that was burned (same
+                            # shape /api/subtitle persists) so the modal
+                            # reopens showing the size/colors actually in the
+                            # delivered file, and _reapply_captions restores
+                            # it on later derivations. Only on a successful
+                            # burn: a clip that shipped uncaptioned has no
+                            # look to restore.
+                            burned, burned_look = effective_caption_style()
+                            burned.pop('style', None)  # same fact as 'look'
+                            clip['caption_style'] = {'look': burned_look, **burned}
                         print(f"   ✅ Clip {i+1} ready: {clip_final_path}")
                         # Hand the API the file to actually serve for this clip.
                         # Without it the status poller guesses the clean reframe
@@ -2255,9 +2308,11 @@ if __name__ == '__main__':
                     except Exception as e:
                         print(f"   ❌ Clip {i+1} failed: {type(e).__name__}: {e}")
 
-            # Persist per-clip render results added by the workers (auto_hook)
-            # so the editor can see what is already burned into each clip.
-            if any('auto_hook' in c or 'hook_grounding' in c for c in shorts):
+            # Persist per-clip render results added by the workers (auto_hook,
+            # the burned caption style) so the editor can see what is already
+            # burned into each clip and the modal can restore it.
+            if any('auto_hook' in c or 'hook_grounding' in c or 'caption_style' in c
+                   for c in shorts):
                 with open(metadata_file, 'w') as f:
                     json.dump(clips_data, f, indent=2)
 

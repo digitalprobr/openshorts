@@ -65,9 +65,9 @@ const swatchClass = (selected) =>
         ? 'ring-2 ring-[color:var(--color-accent)] ring-offset-2 ring-offset-[color:var(--color-paper-2)]'
         : 'ring-1 ring-[color:var(--color-rule-2)] hover:ring-[color:var(--color-accent)]'}`;
 
-export default function SubtitleModal({ isOpen, onClose, onGenerate, onApplyAll, onRemove, isProcessing, videoUrl, jobId, clipIndex, existingHook, bulkCount = 0, bulkProgress }) {
+export default function SubtitleModal({ isOpen, onClose, onGenerate, onApplyAll, onRemove, isProcessing, videoUrl, jobId, clipIndex, existingHook, bulkCount = 0, bulkProgress, savedStyle = null }) {
     const [position, setPosition] = useState('bottom');
-    const [fontSize] = useState(24);
+    const [fontSize, setFontSize] = useState(24);
     const [fontName, setFontName] = useState('Verdana');
     const [fontColor, setFontColor] = useState('#FFFFFF');
     const [highlightColor, setHighlightColor] = useState('#FFDD00');
@@ -107,6 +107,28 @@ export default function SubtitleModal({ isOpen, onClose, onGenerate, onApplyAll,
     const [durationSec, setDurationSec] = useState(30);
     const [captionsLoading, setCaptionsLoading] = useState(false);
     const [useRemotionPreview, setUseRemotionPreview] = useState(false);
+
+    // Restore the style persisted from the last burn on this clip (metadata
+    // clips[i]['caption_style']) so reopening the modal shows the look that is
+    // actually in the delivered file, not generic defaults.
+    useEffect(() => {
+        if (!isOpen || !savedStyle) return;
+        const s = savedStyle;
+        if (s.look) setStyle(s.look);
+        if (s.alignment) setPosition(s.alignment);
+        if (s.font_size) setFontSize(s.font_size);
+        if (s.font_name) setFontName(s.font_name);
+        if (s.font_color) setFontColor(s.font_color);
+        if (s.border_color) setBorderColor(s.border_color);
+        if (s.border_width !== undefined) setBorderWidth(s.border_width);
+        if (s.bg_color) setBgColor(s.bg_color);
+        if (s.bg_opacity !== undefined) setBgOpacity(s.bg_opacity);
+        if (s.highlight_color) setHighlightColor(s.highlight_color);
+        if (s.effect) setEffect(s.effect);
+        if (s.base_opacity !== undefined) setBaseOpacity(s.base_opacity);
+        if (s.uppercase !== undefined) setUppercase(s.uppercase);
+        setActivePreset('custom');
+    }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Fetch word-level captions when modal opens
     useEffect(() => {
@@ -343,6 +365,22 @@ export default function SubtitleModal({ isOpen, onClose, onGenerate, onApplyAll,
                                     <option key={f.value} value={f.value} style={{ fontFamily: f.value }}>{f.label}</option>
                                 ))}
                             </select>
+                        </div>
+
+                        {/* Font Size */}
+                        <div>
+                            <div className="flex justify-between mb-2">
+                                <p className="eyebrow">Size</p>
+                                <span className="readout">{fontSize}</span>
+                            </div>
+                            <input
+                                type="range"
+                                min="12"
+                                max="48"
+                                value={fontSize}
+                                onChange={(e) => setFontSize(parseInt(e.target.value))}
+                                className="w-full accent-[var(--color-accent)]"
+                            />
                         </div>
 
                         {/* Text Color */}

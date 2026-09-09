@@ -28,7 +28,7 @@ export default function MediaInput({ onProcess, isProcessing }) {
         try { return localStorage.getItem('os_auto_hook') !== '0'; } catch { return true; }
     });
     const [autoHookStyle, setAutoHookStyle] = useState(() => {
-        try { return localStorage.getItem('os_auto_hook_style') || 'classic'; } catch { return 'classic'; }
+        try { return localStorage.getItem('os_auto_hook_style') || 'yellow'; } catch { return 'yellow'; }
     });
     // Layout: 'auto' lets the AI pick per video (server default); the others
     // force one on so a podcast host who knows what they uploaded doesn't

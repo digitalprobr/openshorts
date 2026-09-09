@@ -302,3 +302,40 @@ Error reading output for job 4140a7f9-5157-424a-804f-20537cd2217c: 'utf-8' codec
 ♻️  Re-enqueued 1 interrupted job(s) after restart.
 🔄 Acquired slot for job: 45866c9a-40c8-46de-a3fe-cbd07b529136
 🎬 [run_job] Executing command for 45866c9a-40c8-46de-a3fe-cbd07b529136: C:\Users\Usuario\AppData\Local\Programs\Python\Python313\python.exe -u main.py -i uploads\45866c9a-40c8-46de-a3fe-cbd07b529136_YTDown.com_YouTube_Media_z9krxUWYTJg_001_1080p.mp4 -o output\45866c9a-40c8-46de-a3fe-cbd07b529136 --format vertical
+📝 [Job Output] INFO: Created TensorFlow Lite XNNPACK delegate for CPU.
+📝 [Job Output] W0000 00:00:1788896958.196782   15872 inference_feedback_manager.cc:121] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+📝 [Job Output] ❌ FFmpeg was not found. Fix it with ONE of:
+📝 [Job Output] 1. Install it:  winget install Gyan.FFmpeg   (or choco install ffmpeg,
+📝 [Job Output] or download https://www.gyan.dev/ffmpeg/builds/ and add bin/ to PATH)
+📝 [Job Output] 2. Set the FFMPEG_PATH env var to the folder containing ffmpeg(.exe)
+📝 [Job Output] — or to the ffmpeg(.exe) file itself
+📝 [Job Output] 3. pip install imageio-ffmpeg  (ffmpeg only; ffprobe still needs a
+📝 [Job Output] full install)
+✅ Released slot for job: 45866c9a-40c8-46de-a3fe-cbd07b529136
+♻️  Re-enqueued 1 interrupted job(s) after restart.
+🔄 Acquired slot for job: 4ae6a52d-b93e-494b-b57f-30dc49a5618f
+🎬 [run_job] Executing command for 4ae6a52d-b93e-494b-b57f-30dc49a5618f: C:\Users\Usuario\AppData\Local\Programs\Python\Python313\python.exe -u main.py -u https://www.youtube.com/watch?v=c_Y39iTYT3A --keep-original -o output\4ae6a52d-b93e-494b-b57f-30dc49a5618f --format vertical
+📝 [Job Output] INFO: Created TensorFlow Lite XNNPACK delegate for CPU.
+📝 [Job Output] W0000 00:00:1788897602.849238   17144 inference_feedback_manager.cc:121] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+📝 [Job Output] ❌ FFmpeg was not found. Fix it with ONE of:
+📝 [Job Output] 1. Install it:  winget install Gyan.FFmpeg   (or choco install ffmpeg,
+📝 [Job Output] or download https://www.gyan.dev/ffmpeg/builds/ and add bin/ to PATH)
+📝 [Job Output] 2. Set the FFMPEG_PATH env var to the folder containing ffmpeg(.exe)
+📝 [Job Output] — or to the ffmpeg(.exe) file itself
+📝 [Job Output] 3. pip install imageio-ffmpeg  (ffmpeg only; ffprobe still needs a
+📝 [Job Output] full install)
+✅ Released slot for job: 4ae6a52d-b93e-494b-b57f-30dc49a5618f
+♻️  Re-enqueued 1 interrupted job(s) after restart.
+🔄 Acquired slot for job: cadc0c65-527a-4013-9b71-ef6d0198d023
+🎬 [run_job] Executing command for cadc0c65-527a-4013-9b71-ef6d0198d023: C:\Users\Usuario\AppData\Local\Programs\Python\Python313\python.exe -u main.py -i uploads\cadc0c65-527a-4013-9b71-ef6d0198d023_YTDown.com_YouTube_Media_z9krxUWYTJg_001_1080p.mp4 -o output\cadc0c65-527a-4013-9b71-ef6d0198d023 --format vertical
+📝 [Job Output] INFO: Created TensorFlow Lite XNNPACK delegate for CPU.
+📝 [Job Output] W0000 00:00:1788904249.119720   10124 inference_feedback_manager.cc:121] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+📝 [Job Output] ❌ FFmpeg was not found. Fix it with ONE of:
+📝 [Job Output] 1. Install it:  winget install Gyan.FFmpeg   (or choco install ffmpeg,
+📝 [Job Output] or download https://www.gyan.dev/ffmpeg/builds/ and add bin/ to PATH)
+📝 [Job Output] 2. Set the FFMPEG_PATH env var to the folder containing ffmpeg(.exe)
+📝 [Job Output] — or to the ffmpeg(.exe) file itself
+📝 [Job Output] 3. pip install imageio-ffmpeg  (ffmpeg only; ffprobe still needs a
+📝 [Job Output] full install)
+✅ Released slot for job: cadc0c65-527a-4013-9b71-ef6d0198d023
+INFO:     127.0.0.1:59367 - "GET / HTTP/1.1" 404 Not Found

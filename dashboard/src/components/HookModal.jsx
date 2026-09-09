@@ -34,7 +34,7 @@ const SIZE_OPTIONS = [
 ];
 
 // Last-used hook settings, restored on the next open (style always reset to
-// classic otherwise, which users read as the picker being broken).
+// the yellow default otherwise, which users read as the picker being broken).
 function loadHookPrefs() {
     try { return JSON.parse(localStorage.getItem('os_hook_prefs')) || {}; } catch { return {}; }
 }
@@ -43,8 +43,8 @@ export default function HookModal({ isOpen, onClose, onGenerate, onRemove, isPro
     const prefs = loadHookPrefs();
     const [text, setText] = useState(initialText || 'POV: You are using the viral hook feature');
     const [position, setPosition] = useState(prefs.position || 'top');
-    const [size, setSize] = useState(prefs.size || 'M');
-    const [style, setStyle] = useState(prefs.style || 'classic');
+    const [size, setSize] = useState(prefs.size || 'L');
+    const [style, setStyle] = useState(prefs.style || 'yellow');
     const [entranceAnimation, setEntranceAnimation] = useState(prefs.entranceAnimation || 'spring');
     const [displayDuration, setDisplayDuration] = useState(5);
 

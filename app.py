@@ -596,14 +596,19 @@ def _reapply_captions(job_id, clip_index, video_path):
         # A recut clip is a concatenation of source segments, so the flat
         # start..end window is wrong for it — caption against the clip-relative
         # remapped transcript instead (same trick /api/subtitle uses).
+        # style_override: the caption style the user applied in the modal, if
+        # any — re-burns must restore it rather than the default auto look.
+        style_override = clip.get('caption_style')
         recipe_segments = (clip.get('recipe') or {}).get('segments')
         if recipe_segments:
             v_transcript = recut.virtual_transcript(transcript, recipe_segments)
             return _main.auto_caption_clip(
                 video_path, v_transcript, 0.0,
-                recut.total_duration(recipe_segments))
+                recut.total_duration(recipe_segments),
+                style_override=style_override)
         return _main.auto_caption_clip(video_path, transcript,
-                                       clip['start'], clip['end'])
+                                       clip['start'], clip['end'],
+                                       style_override=style_override)
     except Exception as e:
         print(f"⚠️  Could not re-apply captions to {video_path}: {e}")
         return None
@@ -2442,7 +2447,7 @@ async def process_endpoint(
         from hooks import HOOK_STYLES
         if auto_hook_style in HOOK_STYLES:
             env["AUTO_HOOK_STYLE"] = auto_hook_style
-        print(f"[auto-hook] job={job_id} style={env.get('AUTO_HOOK_STYLE', 'classic')}")
+        print(f"[auto-hook] job={job_id} style={env.get('AUTO_HOOK_STYLE', 'yellow')}")
 
     # Manual generation controls (discussion #65): optional clip-count target
     # and duration band, forwarded to the selection prompts via the same env
@@ -3225,6 +3230,7 @@ class SubtitleRequest(BaseModel):
     effect: str = "none"  # none | glow | pop | box (karaoke only)
     base_opacity: float = 1.0  # opacity of non-active words (dimmed modern look)
     uppercase: bool = False
+    bold: bool = True  # preview renders weight 700, so the burn matches by default
     input_filename: Optional[str] = None
     # User-edited caption words. When present, the burn uses them VERBATIM
     # instead of regenerating from the stored transcript — without this, text
@@ -4221,6 +4227,19 @@ async def add_subtitles(req: SubtitleRequest, request: Request):
         border_width=req.border_width, highlight_color=req.highlight_color,
         bg_color=req.bg_color, bg_opacity=req.bg_opacity,
         effect=req.effect, base_opacity=req.base_opacity, uppercase=req.uppercase,
+        bold=req.bold,
+    )
+
+    # The exact style used, persisted into metadata below. Any later derivation
+    # that has to re-burn captions (hook, edit, reframe — _reapply_captions)
+    # must restore THIS look instead of the default auto-caption style.
+    caption_style = dict(
+        look=req.style, alignment=req.position, font_size=req.font_size,
+        font_name=req.font_name, font_color=req.font_color,
+        border_color=req.border_color, border_width=req.border_width,
+        bg_color=req.bg_color, bg_opacity=req.bg_opacity,
+        highlight_color=req.highlight_color, effect=req.effect,
+        base_opacity=req.base_opacity, uppercase=req.uppercase, bold=req.bold,
     )
 
     # Output video
@@ -4273,7 +4292,8 @@ async def add_subtitles(req: SubtitleRequest, request: Request):
                            alignment=req.position, fontsize=req.font_size,
                            font_name=req.font_name, font_color=req.font_color,
                            border_color=req.border_color, border_width=req.border_width,
-                           bg_color=req.bg_color, bg_opacity=req.bg_opacity)
+                           bg_color=req.bg_color, bg_opacity=req.bg_opacity,
+                           bold=req.bold)
         
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, run_burn)
@@ -4296,6 +4316,7 @@ async def add_subtitles(req: SubtitleRequest, request: Request):
     try:
         if req.clip_index < len(clips):
             clips[req.clip_index]['video_url'] = f"/videos/{req.job_id}/{output_filename}"
+            clips[req.clip_index]['caption_style'] = caption_style
             # Update the main data structure
             data['shorts'] = clips
             
@@ -4368,6 +4389,9 @@ async def remove_subtitles(req: RemoveSubtitlesRequest, request: Request):
         job['result']['clips'][req.clip_index]['video_url'] = new_url
     try:
         clips[req.clip_index]['video_url'] = new_url
+        # Captions are gone, so the persisted style goes with them — a later
+        # re-apply must fall back to the default auto-caption look.
+        clips[req.clip_index].pop('caption_style', None)
         data['shorts'] = clips
         with open(json_files[0], 'w') as f:
             json.dump(data, f, indent=4)
@@ -4384,9 +4408,9 @@ class HookRequest(BaseModel):
     text: Optional[str] = ""
     input_filename: Optional[str] = None
     position: Optional[str] = "top" # top, center, bottom
-    size: Optional[str] = "M" # S, M, L
-    duration_seconds: Optional[float] = None  # None = hook visible for the whole clip
-    style: Optional[str] = "classic"  # classic/dark/yellow/red/outline/outline_yellow
+    size: Optional[str] = "L" # S, M, L
+    duration_seconds: Optional[float] = 5.0  # hook visible this many seconds
+    style: Optional[str] = "yellow"  # classic/dark/yellow/red/outline/outline_yellow
     remove: Optional[bool] = False  # strip the burned hook instead of adding one
 
 @app.post("/api/hook", tags=["Hooks"])
