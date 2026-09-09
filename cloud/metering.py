@@ -170,8 +170,19 @@ def probe_url_minutes(url: str, allow_paid: bool = True) -> float:
     # each of those probes then paid the per-GB proxy for nothing.
     from yt_clients import hd_extractor_args, fallback_extractor_args
     hd_args = hd_extractor_args(bgutil_http, bgutil_script)
-    strategies = ([hd_args] if hd_args else []) + [
-        fallback_extractor_args(bgutil_http, bgutil_script)]
+    # (extractor args, send the account cookies). The second attempt on each
+    # route drops the cookies, exactly like the download's 'fallback-static'
+    # step (main.py): with the cookies attached YouTube answers UNPLAYABLE for
+    # every client — web_embedded, tv_downgraded, web AND mweb — on a share of
+    # videos, and yt-dlp reports that as "Video unavailable" (measured in prod
+    # 9-sep-2026, all three statics, same video anonymous → 1080p 137+140).
+    # Without this step the probe read that as an IP problem and escalated to
+    # the per-GB proxy, which carries the same cookies and fails identically,
+    # while the download quietly recovered anonymously on the same static.
+    # With no HD path at all (self-host, no PO token provider) the fallback is
+    # the only attempt, so it keeps the cookies the operator configured.
+    strategies = ([(hd_args, True)] if hd_args else []) + [
+        (fallback_extractor_args(bgutil_http, bgutil_script), not hd_args)]
 
     # Rotated per probe to spread load across the pool, like the download does.
     statics = [p.strip() for p in
@@ -244,10 +255,10 @@ def _probe_with_proxies(url, proxies, strategies, static_errors, paid, ck_path):
             if not static_errors or not any(static_failure_warrants_paid(e)
                                             for e in static_errors.values()):
                 break
-        for extractor_args in strategies:
+        for step, (extractor_args, use_cookies) in enumerate(strategies):
             opts = {"skip_download": True, "quiet": True, "no_warnings": True,
                     "logger": _QuietLogger(), "extractor_args": extractor_args}
-            if ck_path:
+            if ck_path and use_cookies:
                 opts["cookiefile"] = ck_path
             if proxy:
                 opts["proxy"] = proxy
@@ -259,7 +270,7 @@ def _probe_with_proxies(url, proxies, strategies, static_errors, paid, ck_path):
                     if is_paid:
                         _paid_probe_events.append({
                             "url": url, "static_errors": dict(static_errors),
-                            "bytes_estimate": 1_800_000 * (1 + list(strategies).index(extractor_args))})
+                            "bytes_estimate": 1_800_000 * (1 + step)})
                     return float(duration) / 60.0
                 last_err = ValueError("no duration in metadata")
                 if info.get("extractor") == "generic":
